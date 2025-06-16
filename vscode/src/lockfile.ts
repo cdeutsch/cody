@@ -1,4 +1,6 @@
-// This is a modified and sligthly stripped down version of
+/* eslint-disable @typescript-eslint/no-unused-expressions */
+// cspell:ignore moxy ELOCKED ECOMPROMISED ERELEASED ENOTACQUIRED
+// This is a modified and slightly stripped down version of
 // https://github.com/microsoft/playwright/commit/9943bcfcd862963fc2ae4b221d904fe4f6af8368
 // The original seems no longer maintained and has a critical bug
 // https://github.com/moxystudio/node-proper-lockfile/issues/111 It was stripped
@@ -39,7 +41,7 @@ type FS = typeof defaultFsImplementation
 const locks: Record<string, LockObject> = {}
 const pendingTimeouts = new Set<NodeJS.Timeout>()
 
-type LOCK_ERROR_CODE = 'ELOCKED' | 'ECOMPROMISED'
+// type LOCK_ERROR_CODE = 'ELOCKED' | 'ECOMPROMISED';
 
 type Precision = 's' | 'ms'
 interface LockObject {
@@ -122,7 +124,7 @@ export async function waitForLock(
     while (true) {
         signal?.throwIfAborted()
         const unlockFn = await lock(file, opts).catch(err => {
-            if (err && <LOCK_ERROR_CODE>err.code === 'ELOCKED') {
+            if (err && err.code === 'ELOCKED') {
                 return undefined
             }
             throw err
@@ -266,7 +268,7 @@ function acquireLock(
         options.fs.stat(lockfilePath, (err, stat) => {
             if (err) {
                 // Retry if the lockfile has been removed (meanwhile)
-                // Skip stale check to avoid recursiveness
+                // Skip stale check to avoid recessiveness
                 if (err.code === 'ENOENT') {
                     return acquireLock(file, { ...options, stale: 0 }, callback)
                 }
@@ -284,7 +286,7 @@ function acquireLock(
             }
 
             // If it's stale, remove it and try again!
-            // Skip stale check to avoid recursiveness
+            // Skip stale check to avoid recessiveness
             removeLock(file, options, err => {
                 if (err) {
                     return callback(err)

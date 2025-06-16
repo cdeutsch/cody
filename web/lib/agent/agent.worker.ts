@@ -1,7 +1,6 @@
 import { createController } from '@openctx/vscode-lib'
 import { Agent } from '@sourcegraph/cody/src/agent'
-import { CommandsProvider } from 'cody-ai/src/commands/services/provider'
-import { createActivation } from 'cody-ai/src/extension.web'
+import { createActivation } from 'driver-ai/src/extension.web'
 import {
     BrowserMessageReader,
     BrowserMessageWriter,
@@ -19,12 +18,12 @@ const agent = new Agent({
     extensionActivate: createActivation({
         // Since agent is running within web-worker web sentry service will fail
         // since it relies on DOM API which is not available in web-worker
-        createSentryService: undefined,
+        // createSentryService: undefined,
 
         // Workaround for IndexDBStorage bug which fail ąto initialize in Safari
         createStorage: isDemo && isSafari ? undefined : () => IndexDBStorage.create(),
 
-        createCommandsProvider: () => new CommandsProvider(),
+        // createCommandsProvider: () => new CommandsProvider(),
 
         // Import createController from openctx lib synchronously because
         // dynamic import don't work in web worker when we use it in direct

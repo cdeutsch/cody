@@ -6,7 +6,6 @@ import * as vscode from 'vscode'
 import { waitForLock } from '../lockfile'
 import { type Arch, Platform, getOSArch } from '../os'
 import { logDebug, logError } from '../output-channel-logger'
-import { captureException } from '../services/sentry/sentry'
 import { downloadFile, fileExists, unzip } from './utils'
 
 type SymfVersionString = SemverString<'v'>
@@ -25,8 +24,8 @@ export async function getSymfPath(context: vscode.ExtensionContext): Promise<str
     // TODO: maybe we do want an option to download symf if it's not found?
     const config = vscode.workspace.getConfiguration()
     const userSymfPath =
-        config.get<string>('cody.experimental.symf.path') ??
-        config.get<string>('cody.internal.symf.path')
+        config.get<string>('driver-ai.experimental.symf.path') ??
+        config.get<string>('driver-ai.internal.symf.path')
     if (userSymfPath) {
         if (!(await fileExists(userSymfPath))) {
             throw new Error(`symf can't be loaded from user provided path: ${userSymfPath}`)
@@ -35,10 +34,10 @@ export async function getSymfPath(context: vscode.ExtensionContext): Promise<str
         return userSymfPath
     }
 
-    //TODO(rnauta): move all test overrides to helper class
+    //TODO: move all test overrides to helper class
     const symfContainingDir =
-        typeof process !== 'undefined' && process.env.CODY_TESTING_SYMF_DIR
-            ? process.env.CODY_TESTING_SYMF_DIR
+        typeof process !== 'undefined' && process.env.DRIVER_TESTING_SYMF_DIR
+            ? process.env.DRIVER_TESTING_SYMF_DIR
             : path.join(context.globalStorageUri.fsPath, 'symf')
 
     const symfPath = await _upsertSymfForPlatform(symfContainingDir)
@@ -82,7 +81,7 @@ export async function _upsertSymfForPlatform(containingDir: string): Promise<str
         }
         return symfPath
     } catch (error) {
-        captureException(error)
+        // captureException(error);
         void vscode.window.showErrorMessage(`Failed to download symf: ${error}`)
         return null
     }
@@ -125,7 +124,7 @@ async function downloadSymfBinary({
     return await vscode.window.withProgress(
         {
             location: vscode.ProgressLocation.Notification,
-            title: 'Downloading Cody search engine (symf)',
+            title: 'Downloading Driver search engine (symf)',
             cancellable: false,
         },
         async (progress, cancel) => {

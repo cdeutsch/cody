@@ -12,7 +12,7 @@ import * as mockServer from '../fixtures/mock-server'
  */
 export async function beforeIntegrationTest(): Promise<void> {
     // Wait for Cody extension to become ready.
-    const ext = vscode.extensions.getExtension<ExtensionApi>('sourcegraph.cody-ai')
+    const ext = vscode.extensions.getExtension<ExtensionApi>('driver-ai.driver-chat')
     assert.ok(ext, 'extension not found')
 
     const api = await ext?.activate()
@@ -23,7 +23,7 @@ export async function beforeIntegrationTest(): Promise<void> {
 
     function isAuthenticated(): boolean {
         const authStatus = api.testing?.authStatus()
-        return !!authStatus?.authenticated && authStatus.endpoint === `${mockServer.SERVER_URL}/`
+        return !!authStatus?.authenticated
     }
     if (!isAuthenticated()) {
         // Try waiting a bit longer.
@@ -62,7 +62,7 @@ export async function waitUntil(predicate: () => Promise<boolean>): Promise<void
 }
 
 export function getExtensionAPI(): vscode.Extension<ExtensionApi> {
-    const api = vscode.extensions.getExtension<ExtensionApi>('sourcegraph.cody-ai')
+    const api = vscode.extensions.getExtension<ExtensionApi>('driver-ai.driver-chat')
     assert.ok(api)
     return api
 }

@@ -1,3 +1,4 @@
+// cspell:ignore dppx
 import { useEffect } from 'react'
 import { getVSCodeAPI } from './VSCodeApi'
 

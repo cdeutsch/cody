@@ -7,19 +7,19 @@ import { SUPPORTED_URI_SCHEMAS } from '@sourcegraph/cody-shared'
  * the new Chat Panel UI.
  *
  * active: The current valid active/supported text editor instance.
- * ignored: Whether the active editor is ignored by Cody or not.
+ * ignored: Whether the active editor is ignored by Driver or not.
  */
 export interface LastActiveTextEditor {
     active?: vscode.TextEditor
     /**
-     * @deprecated Cody Ignore has been deprecated. This field will be removed in the future.
+     * @deprecated Driver Ignore has been deprecated. This field will be removed in the future.
      */
     ignored?: boolean
 }
 
 /**
  * This returns the current active text editor instance if available,
- * along with a boolean indicating if the text editor is on the Cody ignored list.
+ * along with a boolean indicating if the text editor is on the Driver ignored list.
  * Returns undefined if no editor is active.
  *
  * NOTE: ALL USERS of chat interface in VS Code should use this to get the correct Active Editor instead of using
@@ -50,8 +50,8 @@ export function getEditor(): LastActiveTextEditor {
     // This allows us to get the active editor before the webview panel is focused.
     const get = (): LastActiveTextEditor => {
         // Check if the active editor is:
-        // a. a file that cody supports
-        // b. a file that is ignored by Cody
+        // a. a file that driver supports
+        // b. a file that is ignored by Driver
         const activeEditor = vscode.window.activeTextEditor || vscode.window.visibleTextEditors[0]
         if (activeEditor?.document.uri.scheme) {
             // Update the lastActiveTextEditor if the active editor is a valid file

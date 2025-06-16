@@ -3,7 +3,7 @@ import * as vscode from 'vscode'
 import packageJson from '../../../package.json'
 import { version } from '../../version'
 
-export function openCodyIssueReporter() {
+export function openDriverIssueReporter() {
     void vscode.commands.executeCommand('workbench.action.openIssueReporter', {
         extensionId: `${packageJson.publisher}.${packageJson.name}`,
         issueBody,
@@ -13,7 +13,7 @@ export function openCodyIssueReporter() {
 
 const issueBody = `## Extension Information
 <!-- Do not remove the pre-filled information below -->
-- Cody Version: ${version}
+- Driver Version: ${version}
 - VS Code Version: ${vscode.version}
 - Extension Host: ${vscode.env.appHost}
 
@@ -27,5 +27,5 @@ const issueBody = `## Extension Information
 <!-- A detailed description of what you expected to happen -->
 
 ## Logs
-<!-- Attach logs from the 'Cody Debug: Export Logs' command -->
+<!-- Attach logs from the 'Driver Debug: Export Logs' command -->
 `

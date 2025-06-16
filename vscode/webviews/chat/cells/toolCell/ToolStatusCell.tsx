@@ -3,11 +3,9 @@ import { type FC, useCallback } from 'react'
 import type { URI } from 'vscode-uri'
 import { Skeleton } from '../../../components/shadcn/ui/skeleton'
 import { type VSCodeWrapper, getVSCodeAPI } from '../../../utils/VSCodeApi'
-import { DiffCell } from './DiffCell'
 import { FileCell } from './FileCell'
 import { OutputStatusCell } from './OutputStatusCell'
 import { SearchResultsCell } from './SearchResultsCell'
-import { TerminalOutputCell } from './TerminalOutputCell'
 
 export interface ToolStatusProps {
     title: string
@@ -45,14 +43,6 @@ export const ToolStatusCell: FC<ToolStatusProps> = ({ title, output }) => {
                 onFileLinkClicked={onFileLinkClicked}
             />
         )
-    }
-
-    if (output?.outputType === 'file-diff') {
-        return <DiffCell item={output} onFileLinkClicked={onFileLinkClicked} />
-    }
-
-    if (output?.outputType === 'terminal-output') {
-        return <TerminalOutputCell command={title} item={output} />
     }
 
     return <OutputStatusCell item={output} />

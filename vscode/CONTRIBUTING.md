@@ -90,13 +90,13 @@ running you vscode locally.
 1. **Initialize the Build Watcher**: Run the following command from the monorepo root to start the build watcher:
 
 ```sh
-pnpm --filter cody-ai run watch:build:dev:desktop
+pnpm --filter driver-ai run watch:build:dev:desktop
 ```
 
 2. **Launch the VSCode Extension Host**: Next, start the VSCode extension host by executing the command below from the monorepo root:
 
 ```sh
-pnpm --filter cody-ai run start:dev:desktop
+pnpm --filter driver-ai run start:dev:desktop
 ```
 
 3. **Access the Chrome Inspector**: Open up your Google Chrome browser and navigate to `chrome://inspect/#devices`.

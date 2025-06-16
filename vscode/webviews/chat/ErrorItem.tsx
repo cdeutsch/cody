@@ -1,18 +1,15 @@
-import React, { useCallback, useMemo } from 'react'
+import type React from 'react'
 
-import { type ChatError, FeatureFlag, RateLimitError } from '@sourcegraph/cody-shared'
+import { type ChatError, RateLimitError } from '@sourcegraph/cody-shared'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../components/shadcn/ui/tooltip'
 import type {
     HumanMessageInitialContextInfo as InitialContextInfo,
     PriorHumanMessageInfo,
 } from './cells/messageCell/assistant/AssistantMessageCell'
 
-import type { UserAccountInfo } from '../Chat'
 import type { ApiPostMessage } from '../Chat'
 
 import { Button } from '../components/shadcn/ui/button'
-import { createWebviewTelemetryRecorder } from '../utils/telemetry'
-import { useFeatureFlag } from '../utils/useFeatureFlags'
 import styles from './ErrorItem.module.css'
 
 /**
@@ -20,18 +17,11 @@ import styles from './ErrorItem.module.css'
  */
 export const ErrorItem: React.FunctionComponent<{
     error: Omit<ChatError, 'isChatErrorGuard'>
-    userInfo: Pick<UserAccountInfo, 'isCodyProUser' | 'isDotComUser'>
     postMessage?: ApiPostMessage
     humanMessage?: PriorHumanMessageInfo | null
-}> = ({ error, userInfo, postMessage, humanMessage }) => {
+}> = ({ error, postMessage, humanMessage }) => {
     if (typeof error !== 'string' && error.name === RateLimitError.errorName && postMessage) {
-        return (
-            <RateLimitErrorItem
-                error={error as RateLimitError}
-                userInfo={userInfo}
-                postMessage={postMessage}
-            />
-        )
+        return <RateLimitErrorItem error={error as RateLimitError} />
     }
     return <RequestErrorItem error={error} humanMessage={humanMessage} />
 }
@@ -43,7 +33,7 @@ export const RequestErrorItem: React.FunctionComponent<{
     error: Error
     humanMessage?: PriorHumanMessageInfo | null
 }> = ({ error, humanMessage }) => {
-    const isApiVersionError = error.message.includes('unable to determine Cody API version')
+    const isApiVersionError = error.message.includes('unable to determine Driver API version')
 
     const actions =
         isApiVersionError && humanMessage
@@ -96,108 +86,16 @@ export const RequestErrorItem: React.FunctionComponent<{
  */
 const RateLimitErrorItem: React.FunctionComponent<{
     error: RateLimitError
-    userInfo: Pick<UserAccountInfo, 'isCodyProUser' | 'isDotComUser'>
-    postMessage: ApiPostMessage
-}> = ({ error, userInfo, postMessage }) => {
-    // Only show Upgrades if both the error said an upgrade was available and we know the user
-    // has not since upgraded.
-    const isEnterpriseUser = userInfo.isDotComUser !== true
-    const canUpgrade = error.upgradeIsAvailable && !userInfo?.isCodyProUser
-    const tier = isEnterpriseUser ? 'enterprise' : canUpgrade ? 'free' : 'pro'
-    const telemetryRecorder = useMemo(() => createWebviewTelemetryRecorder(postMessage), [postMessage])
-
-    // Only log once on mount
-    // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally only logs once on mount
-    React.useEffect(() => {
-        // Log as abuseUsageLimit if pro user run into rate limit
-        telemetryRecorder.recordEvent(
-            canUpgrade ? 'cody.upsellUsageLimitCTA' : 'cody.abuseUsageLimitCTA',
-            'shown',
-            {
-                privateMetadata: {
-                    limit_type: 'chat_commands',
-                    tier,
-                },
-            }
-        )
-    }, [telemetryRecorder])
-
-    const onButtonClick = useCallback(
-        (page: 'upgrade' | 'rate-limits', call_to_action: 'upgrade' | 'learn-more'): void => {
-            // Log click event
-            telemetryRecorder.recordEvent('cody.upsellUsageLimitCTA', 'clicked', {
-                privateMetadata: {
-                    limit_type: 'chat_commands',
-                    call_to_action,
-                    tier,
-                },
-            })
-
-            // open the page in browser
-            postMessage({ command: 'show-page', page })
-        },
-        [postMessage, tier, telemetryRecorder]
-    )
-
-    let ctaText = canUpgrade ? 'Upgrade to Cody Pro' : 'Unable to Send Message'
-
-    const fallbackToFlash = useFeatureFlag(FeatureFlag.FallbackToFlash)
-
-    if (fallbackToFlash) {
-        if (userInfo?.isCodyProUser) {
-            ctaText = 'Upgrade to Cody Enterprise'
-        } else if (!canUpgrade) {
-            ctaText = 'Usage limit of premium models reached, switching the model to Gemini Flash.'
-        }
-    }
-
+}> = ({ error }) => {
     return (
         <div className={styles.errorItem}>
-            {canUpgrade && <div className={styles.icon}>⚡️</div>}
             <div className={styles.body}>
                 <header>
-                    <h1>{ctaText}</h1>
-                    <p>
-                        {error.userMessage}
-                        {fallbackToFlash &&
-                            !canUpgrade &&
-                            ' You can continue using Gemini Flash, or other standard models.'}
-                        {canUpgrade &&
-                            ' Upgrade to Cody Pro for unlimited autocomplete suggestions, and increased limits for chat messages and commands.'}
-                    </p>
+                    <h1>Rate Limit Exceeded</h1>
+                    <p>{error.userMessage}</p>
                 </header>
-                <div className={styles.actions}>
-                    {canUpgrade && (
-                        <Button onClick={() => onButtonClick('upgrade', 'upgrade')}>Upgrade</Button>
-                    )}
-                    {error.feature !== 'Agentic Chat' && (
-                        <Button
-                            type="button"
-                            onClick={() =>
-                                canUpgrade
-                                    ? onButtonClick('upgrade', 'upgrade')
-                                    : onButtonClick('rate-limits', 'learn-more')
-                            }
-                            variant="secondary"
-                        >
-                            {canUpgrade ? 'See Plans →' : 'Learn More'}
-                        </Button>
-                    )}
-                </div>
+
                 {error.retryMessage && <p className={styles.retryMessage}>{error.retryMessage}</p>}
-                {canUpgrade && (
-                    <div className={styles.bannerContainer}>
-                        <div
-                            className={styles.banner}
-                            role="button"
-                            tabIndex={-1}
-                            onClick={() => onButtonClick('upgrade', 'upgrade')}
-                            onKeyDown={() => onButtonClick('upgrade', 'upgrade')}
-                        >
-                            Go Pro
-                        </div>
-                    </div>
-                )}
             </div>
         </div>
     )

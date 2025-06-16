@@ -1,5 +1,5 @@
 import * as vscode from 'vscode'
-import { CODY_OUTPUT_CHANNEL, outputChannelManager } from '../../output-channel-logger'
+import { DRIVER_OUTPUT_CHANNEL, outputChannelManager } from '../../output-channel-logger'
 
 /**
  * Exports the output log file to a specified location.
@@ -20,10 +20,10 @@ export async function exportOutputLog(logUri: vscode.Uri): Promise<void> {
             throw new Error('exportOutputLog: Could not find the output directory')
         }
 
-        // search for the file name that ends with 'Cody by Sourcegraph.log' inside the outputdir
+        // search for the file name that ends with 'Driver AI by Driver.log' inside the output dir
         const outputDir = vscode.Uri.joinPath(logDir, outputDirName[0])
         const outputFiles = await vscode.workspace.fs.readDirectory(outputDir)
-        const logFile = outputFiles.find(file => file[0].endsWith(`${CODY_OUTPUT_CHANNEL}.log`))
+        const logFile = outputFiles.find(file => file[0].endsWith(`${DRIVER_OUTPUT_CHANNEL}.log`))
 
         if (!logFile) {
             throw new Error('exportOutputLog: Could not find the log file')
@@ -33,7 +33,7 @@ export async function exportOutputLog(logUri: vscode.Uri): Promise<void> {
         // Ask user for the location to save the log file. toDateString but with number
         const timeNow = new Date().getTime()
         const newLogUri = await vscode.window.showSaveDialog({
-            defaultUri: vscode.Uri.joinPath(logUri, `cody_${timeNow}.log`),
+            defaultUri: vscode.Uri.joinPath(logUri, `driver_${timeNow}.log`),
             filters: {
                 'Log Files': ['log'],
             },
@@ -54,22 +54,22 @@ export async function exportOutputLog(logUri: vscode.Uri): Promise<void> {
             })
     } catch (error) {
         // Open the output channel instead
-        openCodyOutputChannel()
+        openDriverOutputChannel()
         console.error(error)
     }
 }
 
-export function openCodyOutputChannel(): void {
+export function openDriverOutputChannel(): void {
     outputChannelManager.defaultOutputChannel.show()
 }
 
 /**
  * Enables debug mode by updating workspace configuration settings.
- * Sets 'cody.debug.verbose' to true globally.
- * Opens the Cody output channel.
+ * Sets 'driver-ai.debug.verbose' to true globally.
+ * Opens the Driver AI output channel.
  */
 export function enableVerboseDebugMode(): void {
     const workspaceConfig = vscode.workspace.getConfiguration()
-    void workspaceConfig.update('cody.debug.verbose', true, vscode.ConfigurationTarget.Global)
-    openCodyOutputChannel()
+    void workspaceConfig.update('driver-ai.debug.verbose', true, vscode.ConfigurationTarget.Global)
+    openDriverOutputChannel()
 }

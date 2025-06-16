@@ -2,8 +2,7 @@ import {
     type ChatMessage,
     type ContextItemMedia,
     FAST_CHAT_INPUT_TOKEN_BUDGET,
-    type Model,
-    ModelTag,
+    type PrimaryAssetRecord,
     type SerializedPromptEditorState,
     type SerializedPromptEditorValue,
     firstValueFrom,
@@ -13,7 +12,6 @@ import {
 import {
     PromptEditor,
     type PromptEditorRefAPI,
-    PromptEditorV2,
     useDefaultContextForChat,
     useExtensionAPI,
 } from '@sourcegraph/prompt-editor'
@@ -24,17 +22,11 @@ import {
     useCallback,
     useEffect,
     useImperativeHandle,
-    useMemo,
     useRef,
     useState,
 } from 'react'
-import type { UserAccountInfo } from '../../../../../Chat'
 import { type ClientActionListener, useClientActionListener } from '../../../../../client/clientState'
-import { promptModeToIntent } from '../../../../../prompts/promptUtils'
-import { useTelemetryRecorder } from '../../../../../utils/telemetry'
-import { useConfig } from '../../../../../utils/useConfig'
 import { useLinkOpener } from '../../../../../utils/useLinkOpener'
-import { useOmniBox } from '../../../../../utils/useOmniBox'
 import styles from './HumanMessageEditor.module.css'
 import type { SubmitButtonState } from './toolbar/SubmitButton'
 import { Toolbar } from './toolbar/Toolbar'
@@ -43,9 +35,6 @@ import { Toolbar } from './toolbar/Toolbar'
  * A component to compose and edit human chat messages and the settings associated with them.
  */
 export const HumanMessageEditor: FunctionComponent<{
-    models: Model[]
-    userInfo: UserAccountInfo
-
     initialEditorState: SerializedPromptEditorState | undefined
     placeholder: string
 
@@ -75,11 +64,15 @@ export const HumanMessageEditor: FunctionComponent<{
     /** For use in storybooks only. */
     __storybook__focus?: boolean
 
-    selectedIntent: ChatMessage['intent']
-    manuallySelectIntent: (intent: ChatMessage['intent']) => void
+    selectedIntent?: ChatMessage['intent']
+    manuallySelectIntent?: (intent: ChatMessage['intent']) => void
+
+    primaryAsset?: PrimaryAssetRecord
+    primaryAssetLoaded?: boolean
+    chatID?: string
+    handleTunerSubmit: (sourceNodeIds: string[]) => void
+    sourceNodeIds?: string[]
 }> = ({
-    models,
-    userInfo,
     initialEditorState,
     placeholder,
     isFirstMessage,
@@ -97,11 +90,16 @@ export const HumanMessageEditor: FunctionComponent<{
     onEditorFocusChange: parentOnEditorFocusChange,
     selectedIntent,
     manuallySelectIntent,
+    primaryAsset,
+    primaryAssetLoaded,
+    chatID,
+    handleTunerSubmit,
+    sourceNodeIds,
 }) => {
-    const telemetryRecorder = useTelemetryRecorder()
-
     const editorRef = useRef<PromptEditorRefAPI>(null)
     useImperativeHandle(parentEditorRef, (): PromptEditorRefAPI | null => editorRef.current)
+
+    const [isTunerOpen, setIsTunerOpen] = useState(false)
 
     // The only PromptEditor state we really need to track in our own state is whether it's empty.
     const [isEmptyEditorValue, setIsEmptyEditorValue] = useState(
@@ -138,31 +136,26 @@ export const HumanMessageEditor: FunctionComponent<{
                 throw new Error('No editorRef')
             }
 
-            const value = editorRef.current.getSerializedValue()
+            // const value = editorRef.current.getSerializedValue();
 
             parentOnSubmit(_intent)
 
-            telemetryRecorder.recordEvent('cody.humanMessageEditor', 'submit', {
-                metadata: {
-                    isFirstMessage: isFirstMessage ? 1 : 0,
-                    isEdit: isSent ? 1 : 0,
-                    messageLength: value.text.length,
-                    contextItems: value.contextItems.length,
-                    intent: [undefined, 'chat', 'search', 'edit'].findIndex(i => i === _intent),
-                },
-                billingMetadata: {
-                    product: 'cody',
-                    category: 'billable',
-                },
-            })
+            // telemetryRecorder.recordEvent('driver.humanMessageEditor', 'submit', {
+            //   metadata: {
+            //     isFirstMessage: isFirstMessage ? 1 : 0,
+            //     isEdit: isSent ? 1 : 0,
+            //     messageLength: value.text.length,
+            //     contextItems: value.contextItems.length,
+            //     intent: [undefined, 'chat', 'search', 'edit'].findIndex((i) => i === _intent),
+            //   },
+            //   billingMetadata: {
+            //     product: 'driver',
+            //     category: 'billable',
+            //   },
+            // });
         },
-        [submitState, parentOnSubmit, onStop, telemetryRecorder.recordEvent, isFirstMessage, isSent]
+        [submitState, parentOnSubmit, onStop]
     )
-
-    const omniBoxEnabled = useOmniBox() && !userInfo.isDotComUser
-    const {
-        config: { experimentalPromptEditorEnabled },
-    } = useConfig()
 
     const onEditorEnterKey = useCallback(
         (event: KeyboardEvent | null): void => {
@@ -189,16 +182,23 @@ export const HumanMessageEditor: FunctionComponent<{
     const onFocus = useCallback(() => {
         setIsFocusWithin(true)
     }, [])
-    const onBlur = useCallback<FocusEventHandler>(event => {
-        // If we're shifting focus to one of our child elements, just skip this call because we'll
-        // immediately set it back to true.
-        const container = event.currentTarget as HTMLElement
-        if (event.relatedTarget && container.contains(event.relatedTarget)) {
-            return
-        }
+    const onBlur = useCallback<FocusEventHandler>(
+        event => {
+            if (isTunerOpen) {
+                return
+            }
 
-        setIsFocusWithin(false)
-    }, [])
+            // If we're shifting focus to one of our child elements, just skip this call because we'll
+            // immediately set it back to true.
+            const container = event.currentTarget as HTMLElement
+            if (event.relatedTarget && container.contains(event.relatedTarget)) {
+                return
+            }
+
+            setIsFocusWithin(false)
+        },
+        [isTunerOpen]
+    )
 
     useEffect(() => {
         if (isEditorInitiallyFocused) {
@@ -237,7 +237,7 @@ export const HumanMessageEditor: FunctionComponent<{
 
     // Set up the message listener so the extension can control the input field.
     useClientActionListener(
-        // Add new context to chat from the "Cody Add Selection to Cody Chat"
+        // Add new context to chat from the "Driver Add Selection to Driver Chat"
         // command, etc. Only add to the last human input field.
         { isActive: !isSent },
         useCallback<ClientActionListener>(
@@ -297,8 +297,9 @@ export const HumanMessageEditor: FunctionComponent<{
 
                 if (setPromptAsInput) {
                     // set the intent
-                    promptIntent = promptModeToIntent(setPromptAsInput.mode)
-                    manuallySelectIntent(promptIntent)
+                    // promptIntent = promptModeToIntent(setPromptAsInput.mode);
+                    promptIntent = 'chat'
+                    manuallySelectIntent?.(promptIntent)
 
                     updates.push(
                         // biome-ignore lint/suspicious/noAsyncPromiseExecutor: <explanation>
@@ -326,24 +327,16 @@ export const HumanMessageEditor: FunctionComponent<{
                     )
                 } else if (setLastHumanInputIntent) {
                     promptIntent = setLastHumanInputIntent
-                    manuallySelectIntent(setLastHumanInputIntent)
+                    manuallySelectIntent?.(setLastHumanInputIntent)
                 }
 
                 if (submitHumanInput || setPromptAsInput?.autoSubmit) {
                     Promise.all(updates).then(() => onSubmitClick(promptIntent, true))
                 }
             },
-            [
-                selectedIntent,
-                onSubmitClick,
-                extensionAPI.hydratePromptMessage,
-                extensionAPI.defaultContext,
-                manuallySelectIntent,
-            ]
+            [selectedIntent, onSubmitClick, extensionAPI, manuallySelectIntent]
         )
     )
-
-    const currentChatModel = useMemo(() => (models ? models[0] : undefined), [models, models?.[0]])
 
     const defaultContext = useDefaultContextForChat()
 
@@ -360,14 +353,14 @@ export const HumanMessageEditor: FunctionComponent<{
         // Remove tree type if streaming is not supported.
         const excludedTypes = new Set([
             'open-link',
-            ...(currentChatModel?.tags?.includes(ModelTag.StreamDisabled) ? ['tree'] : []),
+            // ...(currentChatModel?.tags?.includes(ModelTag.StreamDisabled) ? ['tree'] : []),
         ])
 
         const filteredItems = defaultContext?.initialContext.filter(
             item => !excludedTypes.has(item.type)
         )
         void editor.setInitialContextMentions(filteredItems)
-    }, [defaultContext?.initialContext, isSent, isFirstMessage, currentChatModel, selectedIntent])
+    }, [defaultContext?.initialContext, isSent, isFirstMessage, selectedIntent])
 
     const focusEditor = useCallback(() => editorRef.current?.setFocus(true), [])
 
@@ -378,18 +371,13 @@ export const HumanMessageEditor: FunctionComponent<{
     }, [__storybook__focus, focusEditor])
 
     const focused = Boolean(isEditorFocused || isFocusWithin || __storybook__focus)
-    const contextWindowSizeInTokens =
-        currentChatModel?.contextWindow?.context?.user ||
-        currentChatModel?.contextWindow?.input ||
-        FAST_CHAT_INPUT_TOKEN_BUDGET
+    const contextWindowSizeInTokens = FAST_CHAT_INPUT_TOKEN_BUDGET
 
     const linkOpener = useLinkOpener()
     const openExternalLink = useCallback(
         (uri: string) => linkOpener?.openExternalLink(uri),
         [linkOpener]
     )
-
-    const Editor = experimentalPromptEditorEnabled ? PromptEditorV2 : PromptEditor
 
     const onMediaUpload = useCallback(
         (media: ContextItemMedia) => {
@@ -401,6 +389,8 @@ export const HumanMessageEditor: FunctionComponent<{
         },
         [focused]
     )
+
+    const actualDisabled = disabled || !chatID
 
     return (
         // biome-ignore lint/a11y/useKeyWithClickEvents: only relevant to click areas
@@ -420,7 +410,7 @@ export const HumanMessageEditor: FunctionComponent<{
             onFocus={onFocus}
             onBlur={onBlur}
         >
-            <Editor
+            <PromptEditor
                 seamless={true}
                 placeholder={placeholder}
                 initialEditorState={initialEditorState}
@@ -428,18 +418,16 @@ export const HumanMessageEditor: FunctionComponent<{
                 onFocusChange={onEditorFocusChange}
                 onEnterKey={onEditorEnterKey}
                 editorRef={editorRef}
-                disabled={disabled}
+                disabled={actualDisabled}
                 contextWindowSizeInTokens={contextWindowSizeInTokens}
                 editorClassName={styles.editor}
                 contentEditableClassName={styles.editorContentEditable}
                 openExternalLink={openExternalLink}
             />
-            {!disabled && (
+            {!actualDisabled && (
                 <Toolbar
-                    models={models}
-                    userInfo={userInfo}
                     isEditorFocused={focused}
-                    omniBoxEnabled={omniBoxEnabled}
+                    omniBoxEnabled={false}
                     onSubmitClick={onSubmitClick}
                     submitState={submitState}
                     onGapClick={onGapClick}
@@ -450,6 +438,11 @@ export const HumanMessageEditor: FunctionComponent<{
                     extensionAPI={extensionAPI}
                     onMediaUpload={onMediaUpload}
                     setLastManuallySelectedIntent={manuallySelectIntent}
+                    primaryAsset={primaryAsset}
+                    primaryAssetLoaded={primaryAssetLoaded}
+                    handleTunerSubmit={handleTunerSubmit}
+                    sourceNodeIds={sourceNodeIds}
+                    onTunerOpenChange={setIsTunerOpen}
                 />
             )}
         </div>

@@ -2,7 +2,7 @@ import type { SerializedElementNode, SerializedLexicalNode, SerializedTextNode }
 import type { SerializedPromptEditorValue } from './editorState'
 import type { SerializedContextItem, SerializedContextItemMentionNode } from './nodes'
 
-export const AT_MENTION_SERIALIZED_PREFIX = 'cody://serialized.v1'
+export const AT_MENTION_SERIALIZED_PREFIX = 'driver://serialized.v1'
 const AT_MENTION_SERIALIZATION_END = '_'
 const BASE_64_CHARACTERS = '[A-Za-z0-9+/]+={0,2}'
 
@@ -15,11 +15,11 @@ function unicodeSafeAtob(str: string) {
 }
 
 export const DYNAMIC_MENTION_TO_HYDRATABLE: Record<string, string> = {
-    'current-selection': 'cody://selection',
-    'current-file': 'cody://current-file',
-    'current-repository': 'cody://repository',
-    'current-directory': 'cody://current-dir',
-    'current-open-tabs': 'cody://tabs',
+    'current-selection': 'driver://selection',
+    'current-file': 'driver://current-file',
+    'current-repository': 'driver://repository',
+    'current-directory': 'driver://current-dir',
+    'current-open-tabs': 'driver://tabs',
 }
 
 function isDynamicMentionKey(value: string): value is keyof typeof DYNAMIC_MENTION_TO_HYDRATABLE {
@@ -28,7 +28,7 @@ function isDynamicMentionKey(value: string): value is keyof typeof DYNAMIC_MENTI
 
 /**
  * This function serializes a SerializedPromptEditorValue into a string representation that contains serialized
- * elements for contextMentionItems as a base64 encoded string or cody:// syntax for current mentions.
+ * elements for contextMentionItems as a base64 encoded string or driver:// syntax for current mentions.
  * The result can be used with the deserialize function to rebuild the editor state.
  *
  * @param m SerializedPromptEditorValue
@@ -95,31 +95,32 @@ function deserializeContextMentionItem(s: string) {
 }
 
 const CONTEXT_ITEMS = {
-    'cody://selection': {
+    'driver://selection': {
         description: 'Picks the current selection',
         type: 'current-selection',
         title: 'Current Selection',
         text: 'current selection',
     },
-    'cody://current-file': {
+    'driver://current-file': {
         description: 'Picks the current file',
         type: 'current-file',
         title: 'Current File',
         text: 'current file',
     },
-    'cody://repository': {
-        description: 'Picks the current repository',
-        type: 'current-repository',
-        title: 'Current Repository',
-        text: 'current repository',
-    },
-    'cody://current-dir': {
+    // CD: Driver uses Tuning instead of referencing the current repository.
+    // 'driver://repository': {
+    //   description: 'Picks the current repository',
+    //   type: 'current-repository',
+    //   title: 'Current Repository',
+    //   text: 'current repository',
+    // },
+    'driver://current-dir': {
         description: 'Picks the current directory',
         type: 'current-directory',
         title: 'Current Directory',
         text: 'current directory',
     },
-    'cody://tabs': {
+    'driver://tabs': {
         description: 'Picks the current open tabs',
         type: 'current-open-tabs',
         title: 'Current Open Tabs',
@@ -222,21 +223,21 @@ function createContextItemMention(
     }
 }
 
-const AT_MENTION_REGEX = /(cody:\/\/(?:serialized[^_]+_|[a-zA-Z0-9-]+))/
+const AT_MENTION_REGEX = /(driver:\/\/(?:serialized[^_]+_|[a-zA-Z0-9-]+))/
 
 export function splitToWords(s: string): string[] {
     /**
-     * Regular expression pattern that matches Cody context mentions in two formats:
-     * 1. Built-in shortcuts like 'cody://tabs', 'cody://selection' (defined in CONTEXT_ITEMS)
-     * 2. Serialized context items like 'cody://serialized.v1?data=base64data_'
+     * Regular expression pattern that matches Driver context mentions in two formats:
+     * 1. Built-in shortcuts like 'driver://tabs', 'driver://selection' (defined in CONTEXT_ITEMS)
+     * 2. Serialized context items like 'driver://serialized.v1?data=base64data_'
      *
      * For built-in shortcuts: includes letters and numbers, and dash (-). Those are not part of built-in shortcuts.
-     * For serialized items: includes everything between 'cody://serialized' and '_'
+     * For serialized items: includes everything between 'driver://serialized' and '_'
      *
      * Examples:
-     * - "cody://tabs." -> matches "cody://tabs"
-     * - "explain cody://current-selection's content" -> matches "cody://current-selection"
-     * - "cody://serialized.v1?data=123_." -> matches "cody://serialized.v1?data=123_"
+     * - "driver://tabs." -> matches "driver://tabs"
+     * - "explain driver://current-selection's content" -> matches "driver://current-selection"
+     * - "driver://serialized.v1?data=123_." -> matches "driver://serialized.v1?data=123_"
      */
     return s.split(AT_MENTION_REGEX)
 }

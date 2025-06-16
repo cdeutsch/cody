@@ -1,14 +1,6 @@
-import {
-    type Action,
-    type CodyCommand,
-    CustomCommandType,
-    type Prompt,
-    type PromptsResult,
-    type WebviewToExtensionAPI,
-    promiseFactoryToObservable,
-} from '@sourcegraph/cody-shared'
+import { CustomCommandType, type DriverCommand } from '@sourcegraph/cody-shared'
 
-export const FIXTURE_COMMANDS: CodyCommand[] = [
+export const FIXTURE_COMMANDS: DriverCommand[] = [
     {
         key: 'edit',
         description: 'Edit Code',
@@ -61,34 +53,34 @@ export const FIXTURE_COMMANDS: CodyCommand[] = [
 /**
  * For testing only.
  */
-export function makePromptsAPIWithData(data: {
-    arePromptsSupported?: boolean
-    prompts: Prompt[]
-    commands?: CodyCommand[]
-}): WebviewToExtensionAPI['prompts'] {
-    return input =>
-        promiseFactoryToObservable<PromptsResult>(async () => {
-            const { query } = input
-            const { arePromptsSupported = true, prompts, commands = [] } = data
-            await new Promise<void>(resolve => setTimeout(resolve, 500))
+// export function makePromptsAPIWithData(data: {
+//     arePromptsSupported?: boolean
+//     prompts: Prompt[]
+//     commands?: DriverCommand[]
+// }): WebviewToExtensionAPI['prompts'] {
+//     return input =>
+//         promiseFactoryToObservable<PromptsResult>(async () => {
+//             const { query } = input
+//             const { arePromptsSupported = true, prompts, commands = [] } = data
+//             await new Promise<void>(resolve => setTimeout(resolve, 500))
 
-            const queryLower = query.toLowerCase()
-            function matchQuery(text: string): boolean {
-                return text.toLowerCase().includes(queryLower)
-            }
+//             const queryLower = query.toLowerCase()
+//             function matchQuery(text: string): boolean {
+//                 return text.toLowerCase().includes(queryLower)
+//             }
 
-            return {
-                query,
-                arePromptsSupported,
-                actions: [
-                    ...prompts
-                        .filter(prompt => matchQuery(prompt.name))
-                        .map<Action>(prompt => ({ ...prompt, actionType: 'prompt' })),
+//             return {
+//                 query,
+//                 arePromptsSupported,
+//                 actions: [
+//                     ...prompts
+//                         .filter(prompt => matchQuery(prompt.name))
+//                         .map<Action>(prompt => ({ ...prompt, actionType: 'prompt' })),
 
-                    ...commands
-                        .filter(c => matchQuery(c.key))
-                        .map<Action>(prompt => ({ ...prompt, actionType: 'command' })),
-                ],
-            } satisfies PromptsResult
-        })
-}
+//                     ...commands
+//                         .filter(c => matchQuery(c.key))
+//                         .map<Action>(prompt => ({ ...prompt, actionType: 'command' })),
+//                 ],
+//             } satisfies PromptsResult
+//         })
+// }

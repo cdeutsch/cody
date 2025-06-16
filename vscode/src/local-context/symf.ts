@@ -1,3 +1,4 @@
+// cspell:ignore blugeScore cenv fqname GOMAXPROCS indexroot millis symf unindexed
 import { execFile as _execFile, spawn } from 'node:child_process'
 import fs, { access, rename, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -18,19 +19,15 @@ import {
     displayPath,
     isAbortError,
     isDefined,
-    isDotCom,
     isFileURI,
     isWindows,
-    isWorkspaceInstance,
     subscriptionDisposable,
-    telemetryRecorder,
     uriBasename,
     uriDirname,
 } from '@sourcegraph/cody-shared'
 
 import { logDebug } from '../output-channel-logger'
 
-import path from 'node:path'
 import { getEditor } from '../editor/active-editor'
 import { getSymfPath } from './download-symf'
 
@@ -76,8 +73,8 @@ export class SymfRunner implements vscode.Disposable {
         const indexRoot = vscode.Uri.joinPath(context.globalStorageUri, 'symf', 'indexroot').with(
             // On VS Code Desktop, this is a `vscode-userdata:` URI that actually just refers to
             // file system paths.
-            //TODO: This probaly shouldn't go of UI Kind but extension kind
-            (cenv.CODY_OVERRIDE_UI_KIND ?? vscode.env.uiKind) === vscode.UIKind.Desktop
+            //TODO: This probably shouldn't go of UI Kind but extension kind
+            (cenv.DRIVER_OVERRIDE_UI_KIND ?? vscode.env.uiKind) === vscode.UIKind.Desktop
                 ? { scheme: 'file' }
                 : {}
         )
@@ -92,9 +89,7 @@ export class SymfRunner implements vscode.Disposable {
             subscriptionDisposable(
                 authStatus.subscribe(authStatus => {
                     // symf is now available for dotcom and Enterprise Starter users
-                    // see https://linear.app/sourcegraph/issue/CODY-5017/enable-symf-for-enterprise-starter-and-make-it-easy-for-users-to
-                    const symfEnabledForLocalContext =
-                        isDotCom(authStatus) || isWorkspaceInstance(authStatus)
+                    const symfEnabledForLocalContext = true
                     if (!isInitialized && authStatus.authenticated && symfEnabledForLocalContext) {
                         // Only initialize symf after the user has authenticated
                         isInitialized = true
@@ -251,13 +246,13 @@ export class SymfRunner implements vscode.Disposable {
                     ignoreExisting: true,
                 })
 
-                const { indexDir } = this.getIndexDir(scopeDir)
-                const indexSize = await getDirSize(indexDir.path)
-                telemetryRecorder.recordEvent('cody.context.symf', 'indexed', {
-                    metadata: {
-                        indexSize,
-                    },
-                })
+                // const { indexDir } = this.getIndexDir(scopeDir);
+                // const indexSize = await getDirSize(indexDir.path);
+                // telemetryRecorder.recordEvent('driver.context.symf', 'indexed', {
+                //   metadata: {
+                //     indexSize,
+                //   },
+                // });
             }
         } catch (error) {
             logDebug('SymfRunner', `Error checking freshness of index at ${scopeDir.fsPath}`, error)
@@ -645,7 +640,7 @@ function parseSymfStdout(stdout: string): Result[] {
  *
  * Note: it is possible for an overlapping succession of readers to starve out
  * any writers that are waiting for the mutex to be released. In practice, this
- * is not an issue, because we don't expect the user to issue neverending
+ * is not an issue, because we don't expect the user to issue never ending
  * while trying to update the index.
  */
 class RWLock {
@@ -693,25 +688,25 @@ function toSymfError(error: unknown): Error {
     let errorMessage: string
     if (errorString.includes('ENOENT')) {
         errorMessage =
-            'symf binary not found. If needed, download symf manually and set "cody.internal.symf.path".'
+            'symf binary not found. If needed, download symf manually and set "driver-ai.internal.symf.path".'
     } else if (errorString.includes('401')) {
-        errorMessage = `symf: Unauthorized. Is Cody signed in? ${error}`
+        errorMessage = `symf: Unauthorized. Is Driver signed in? ${error}`
     } else {
         errorMessage = `symf failed: ${error}`
     }
     return new EvalError(errorMessage)
 }
 
-async function getDirSize(dirPath: string): Promise<number> {
-    const files = await fs.readdir(dirPath)
-    let totalSize = 0
+// async function getDirSize(dirPath: string): Promise<number> {
+//   const files = await fs.readdir(dirPath);
+//   let totalSize = 0;
 
-    for (const file of files) {
-        const stats = await fs.stat(path.join(dirPath, file))
-        totalSize += stats.size // Symf doesn't create indexes with nested directories, so don't recurse
-    }
-    return totalSize
-}
+//   for (const file of files) {
+//     const stats = await fs.stat(path.join(dirPath, file));
+//     totalSize += stats.size; // Symf doesn't create indexes with nested directories, so don't recurse
+//   }
+//   return totalSize;
+// }
 
 function initializeSymfIndexManagement(symf: SymfRunner): vscode.Disposable {
     const disposables: vscode.Disposable[] = []
@@ -720,7 +715,7 @@ function initializeSymfIndexManagement(symf: SymfRunner): vscode.Disposable {
     disposables.push(indexManager)
 
     disposables.push(
-        vscode.commands.registerCommand('cody.search.index-update', async () => {
+        vscode.commands.registerCommand('driver-ai.search.index-update', async () => {
             const scopeDirs = getScopeDirs()
             if (scopeDirs.length === 0) {
                 void vscode.window.showWarningMessage('Open a workspace folder to index')
@@ -728,7 +723,7 @@ function initializeSymfIndexManagement(symf: SymfRunner): vscode.Disposable {
             }
             await indexManager.refreshIndex(scopeDirs[0])
         }),
-        vscode.commands.registerCommand('cody.search.index-update-all', async () => {
+        vscode.commands.registerCommand('driver-ai.search.index-update-all', async () => {
             const folders = vscode.workspace.workspaceFolders
                 ?.map(folder => folder.uri)
                 .filter(isFileURI)
@@ -837,7 +832,7 @@ class IndexManager implements vscode.Disposable {
         void vscode.window.withProgress(
             {
                 location: vscode.ProgressLocation.Notification,
-                title: `Updating Cody search index for ${uriBasename(scopeDir)}`,
+                title: `Updating Driver search index for ${uriBasename(scopeDir)}`,
                 cancellable: true,
             },
             async (_progress, token) => {

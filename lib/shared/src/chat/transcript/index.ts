@@ -7,6 +7,9 @@ import type { ChatMessage, SerializedChatMessage } from './messages'
 export interface SerializedChatTranscript {
     /** A unique and opaque identifier for this transcript. */
     id: string
+    llmSessionId?: string
+    repoName?: string
+    primaryAssetId?: string
 
     chatTitle?: string
     interactions: SerializedChatInteraction[]
@@ -21,12 +24,14 @@ export interface SerializedChatInteraction {
 
     /** `null` if the assistant has not yet replied to the human message. */
     assistantMessage: SerializedChatMessage | null
+
+    sourceNodeIds?: string[] | undefined | null
 }
 
 export function serializeChatMessage(chatMessage: ChatMessage): SerializedChatMessage {
     return {
         speaker: chatMessage.speaker,
-        model: chatMessage.model,
+        // model: chatMessage.model,
         contextFiles: chatMessage.contextFiles,
         editorState: chatMessage.editorState,
         error: chatMessage.error,
@@ -39,6 +44,7 @@ export function serializeChatMessage(chatMessage: ChatMessage): SerializedChatMe
         agent: chatMessage.agent,
         subMessages: chatMessage.subMessages,
         content: chatMessage.content,
+        sourceNodeIds: chatMessage.sourceNodeIds,
     }
 }
 

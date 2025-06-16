@@ -4,14 +4,14 @@
  */
 import isomorphicFetch from 'isomorphic-fetch'
 import { globalAgentRef } from './fetch.patch'
-import { addCodyClientIdentificationHeaders } from './sourcegraph-api/client-name-version'
-import type { BrowserOrNodeResponse } from './sourcegraph-api/graphql/client'
+import { addDriverClientIdentificationHeaders } from './sourcegraph-api/client-name-version'
+import type { BrowserOrNodeResponse } from './sourcegraph-api/graphql/client-types'
 export * from './fetch.patch'
 
 export function fetch(input: RequestInfo | URL, init?: RequestInit): Promise<BrowserOrNodeResponse> {
     init = init ?? {}
     const headers = new Headers(init?.headers)
-    addCodyClientIdentificationHeaders(headers)
+    addDriverClientIdentificationHeaders(headers)
     init.headers = headers
 
     const initWithAgent: RequestInit & { agent: typeof globalAgentRef.agent } = {

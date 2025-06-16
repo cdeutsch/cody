@@ -1,3 +1,4 @@
+// cspell:ignore byok
 /**
  * Enum representing various tags that can be applied to a model.
  * These tags are used to categorize and filter models based on model's characteristics.

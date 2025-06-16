@@ -2,28 +2,26 @@ import { type ComponentProps, useCallback, useEffect, useMemo, useState } from '
 
 import {
     type ChatMessage,
-    type CodyClientConfig,
+    type ClientConfig,
     type DefaultContext,
+    type PrimaryAssetRecord,
     PromptString,
-    type TelemetryRecorder,
-    createGuardrailsImpl,
 } from '@sourcegraph/cody-shared'
-import type { AuthMethod } from '../src/chat/protocol'
 import styles from './App.module.css'
 import { AuthPage } from './AuthPage'
 import { LoadingPage } from './LoadingPage'
 import { useClientActionDispatcher } from './client/clientState'
-import { WebviewOpenTelemetryService } from './utils/webviewOpenTelemetryService'
 
 import { ExtensionAPIProviderFromVSCodeAPI } from '@sourcegraph/prompt-editor'
+import type { ExtensionTranscriptMessage } from '../src/chat/protocol'
 import { CodyPanel } from './CodyPanel'
 import { AuthenticationErrorBanner } from './components/AuthenticationErrorBanner'
 import { useSuppressKeys } from './components/hooks'
+import { UserProvider } from './contexts/UserContext'
 import { View } from './tabs'
 import type { VSCodeWrapper } from './utils/VSCodeApi'
 import { ComposedWrappers, type Wrapper } from './utils/composeWrappers'
 import { updateDisplayPathEnvInfoForWebview } from './utils/displayPathEnvInfo'
-import { TelemetryRecorderContext, createWebviewTelemetryRecorder } from './utils/telemetry'
 import { ClientConfigProvider } from './utils/useClientConfig'
 import { type Config, ConfigProvider } from './utils/useConfig'
 import { useDevicePixelRatioNotifier } from './utils/useDevicePixelRatio'
@@ -31,10 +29,13 @@ import { LinkOpenerProvider } from './utils/useLinkOpener'
 
 export const App: React.FunctionComponent<{ vscodeAPI: VSCodeWrapper }> = ({ vscodeAPI }) => {
     const [config, setConfig] = useState<Config | null>(null)
-    const [clientConfig, setClientConfig] = useState<CodyClientConfig | null>(null)
+    const [clientConfig, setClientConfig] = useState<ClientConfig | null>(null)
     // NOTE: View state will be set by the extension host during initialization.
     const [view, setView] = useState<View>()
     const [messageInProgress, setMessageInProgress] = useState<ChatMessage | null>(null)
+    const [primaryAsset, setPrimaryAsset] = useState<PrimaryAssetRecord | undefined>(undefined)
+    const [primaryAssetLoaded, setPrimaryAssetLoaded] = useState<boolean>(false)
+    const [chatID, setChatID] = useState<string | undefined>(undefined)
 
     const [transcript, setTranscript] = useState<ChatMessage[]>([])
 
@@ -42,35 +43,29 @@ export const App: React.FunctionComponent<{ vscodeAPI: VSCodeWrapper }> = ({ vsc
 
     const dispatchClientAction = useClientActionDispatcher()
 
-    const clientConfigAttribution = clientConfig?.attribution ?? 'none'
-    const guardrails = useMemo(() => {
-        return createGuardrailsImpl(clientConfigAttribution, (snippet: string) => {
-            vscodeAPI.postMessage({
-                command: 'attribution-search',
-                snippet,
-            })
-        })
-    }, [vscodeAPI, clientConfigAttribution])
-
     useSuppressKeys()
+
+    // console.debug('messageInProgress', messageInProgress);
+    // console.debug('transcript', transcript);
 
     useEffect(
         () =>
-            vscodeAPI.onMessage(message => {
+            vscodeAPI.onMessage((message: any) => {
                 switch (message.type) {
                     case 'ui/theme': {
                         document.documentElement.dataset.ide = message.agentIDE
                         const rootStyle = document.documentElement.style
                         for (const [name, value] of Object.entries(message.cssVariables || {})) {
-                            rootStyle.setProperty(name, value)
+                            rootStyle.setProperty(name, value as string)
                         }
                         break
                     }
                     case 'transcript': {
-                        const deserializedMessages = message.messages.map(
+                        const transcriptMsg = message as ExtensionTranscriptMessage
+                        const deserializedMessages = transcriptMsg.messages.map(
                             PromptString.unsafe_deserializeChatMessage
                         )
-                        if (message.isMessageInProgress) {
+                        if (transcriptMsg.isMessageInProgress) {
                             const msgLength = deserializedMessages.length - 1
                             setTranscript(deserializedMessages.slice(0, msgLength))
                             setMessageInProgress(deserializedMessages[msgLength])
@@ -78,7 +73,10 @@ export const App: React.FunctionComponent<{ vscodeAPI: VSCodeWrapper }> = ({ vsc
                             setTranscript(deserializedMessages)
                             setMessageInProgress(null)
                         }
-                        vscodeAPI.setState(message.chatID)
+                        setPrimaryAssetLoaded(transcriptMsg.primaryAssetLoaded || false)
+                        setPrimaryAsset(transcriptMsg.primaryAsset)
+                        setChatID(transcriptMsg.chatID)
+                        vscodeAPI.setState(transcriptMsg.chatID)
                         break
                     }
                     case 'config':
@@ -98,30 +96,22 @@ export const App: React.FunctionComponent<{ vscodeAPI: VSCodeWrapper }> = ({ vsc
                         dispatchClientAction(message)
                         break
                     case 'errors':
-                        setErrorMessages(prev => [...prev, message.errors].slice(-5))
+                        setErrorMessages(prev => {
+                            // Check for duplicate errors.
+                            if (prev.includes(message.errors)) {
+                                return prev
+                            }
+
+                            const newErrors = [...prev, message.errors]
+                            return newErrors.slice(-5)
+                        })
                         break
                     case 'view':
                         setView(message.view)
                         break
-                    case 'attribution':
-                        if (message.attribution) {
-                            guardrails.notifyAttributionSuccess(message.snippet, {
-                                repositories: message.attribution.repositoryNames.map(name => {
-                                    return { name }
-                                }),
-                                limitHit: message.attribution.limitHit,
-                            })
-                        }
-                        if (message.error) {
-                            guardrails.notifyAttributionFailure(
-                                message.snippet,
-                                new Error(message.error)
-                            )
-                        }
-                        break
                 }
             }),
-        [view, vscodeAPI, guardrails, dispatchClientAction]
+        [view, vscodeAPI, dispatchClientAction]
     )
 
     useEffect(() => {
@@ -136,46 +126,23 @@ export const App: React.FunctionComponent<{ vscodeAPI: VSCodeWrapper }> = ({ vsc
         }
     }, [view, vscodeAPI])
 
-    const loginRedirect = useCallback(
-        (method: AuthMethod) => {
-            // We do not change the view here. We want to keep presenting the
-            // login buttons until we get a token so users don't get stuck if
-            // they close the browser during an auth flow.
-            vscodeAPI.postMessage({
-                command: 'auth',
-                authKind: 'simplified-onboarding',
-                authMethod: method,
-            })
-        },
-        [vscodeAPI]
-    )
-
-    // V2 telemetry recorder
-    const telemetryRecorder = useMemo(() => createWebviewTelemetryRecorder(vscodeAPI), [vscodeAPI])
-
-    const webviewTelemetryService = useMemo(() => {
-        const service = WebviewOpenTelemetryService.getInstance()
-        return service
-    }, [])
-
-    useEffect(() => {
-        if (config) {
-            webviewTelemetryService.configure({
-                isTracingEnabled: true,
-                debugVerbose: true,
-                ide: config.clientCapabilities.agentIDE,
-                codyExtensionVersion: config.clientCapabilities.agentExtensionVersion,
-            })
-        }
-    }, [config, webviewTelemetryService])
+    const loginRedirect = useCallback(() => {
+        // We do not change the view here. We want to keep presenting the
+        // login buttons until we get a token so users don't get stuck if
+        // they close the browser during an auth flow.
+        vscodeAPI.postMessage({
+            command: 'auth',
+            authKind: 'simplified-onboarding',
+        })
+    }, [vscodeAPI])
 
     // Notify the extension host of the device pixel ratio
     // Currently used for image generation in auto-edit.
     useDevicePixelRatioNotifier()
 
     const wrappers = useMemo<Wrapper[]>(
-        () => getAppWrappers({ vscodeAPI, telemetryRecorder, config, clientConfig }),
-        [vscodeAPI, telemetryRecorder, config, clientConfig]
+        () => getAppWrappers({ vscodeAPI, config, clientConfig }),
+        [vscodeAPI, config, clientConfig]
     )
 
     // Wait for all the data to be loaded before rendering Chat View
@@ -190,30 +157,24 @@ export const App: React.FunctionComponent<{ vscodeAPI: VSCodeWrapper }> = ({ vsc
                     {!config.authStatus.authenticated && config.authStatus.error && (
                         <AuthenticationErrorBanner errorMessage={config.authStatus.error} />
                     )}
-                    <AuthPage
-                        simplifiedLoginRedirect={loginRedirect}
-                        uiKindIsWeb={config.config.uiKindIsWeb}
-                        vscodeAPI={vscodeAPI}
-                        codyIDE={config.clientCapabilities.agentIDE}
-                        endpoints={config.config.endpointHistory ?? []}
-                        authStatus={config.authStatus}
-                        allowEndpointChange={config.config.allowEndpointChange}
-                    />
+                    <AuthPage onLogin={loginRedirect} />
                 </div>
             ) : (
-                <CodyPanel
-                    view={view}
-                    setView={setView}
-                    configuration={config}
-                    errorMessages={errorMessages}
-                    setErrorMessages={setErrorMessages}
-                    chatEnabled={clientConfig?.chatEnabled ?? true}
-                    instanceNotices={clientConfig?.notices ?? []}
-                    messageInProgress={messageInProgress}
-                    transcript={transcript}
-                    vscodeAPI={vscodeAPI}
-                    guardrails={guardrails}
-                />
+                <UserProvider user={config.authStatus.user}>
+                    <CodyPanel
+                        view={view}
+                        setView={setView}
+                        configuration={config}
+                        errorMessages={errorMessages}
+                        setErrorMessages={setErrorMessages}
+                        messageInProgress={messageInProgress}
+                        transcript={transcript}
+                        vscodeAPI={vscodeAPI}
+                        primaryAsset={primaryAsset}
+                        primaryAssetLoaded={primaryAssetLoaded}
+                        chatID={chatID}
+                    />
+                </UserProvider>
             )}
         </ComposedWrappers>
     )
@@ -221,24 +182,18 @@ export const App: React.FunctionComponent<{ vscodeAPI: VSCodeWrapper }> = ({ vsc
 
 interface GetAppWrappersOptions {
     vscodeAPI: VSCodeWrapper
-    telemetryRecorder: TelemetryRecorder
     config: Config | null
-    clientConfig: CodyClientConfig | null
+    clientConfig: ClientConfig | null
     staticDefaultContext?: DefaultContext
 }
 
 export function getAppWrappers({
     vscodeAPI,
-    telemetryRecorder,
     config,
     clientConfig,
     staticDefaultContext,
 }: GetAppWrappersOptions): Wrapper[] {
     return [
-        {
-            provider: TelemetryRecorderContext.Provider,
-            value: telemetryRecorder,
-        } satisfies Wrapper<ComponentProps<typeof TelemetryRecorderContext.Provider>['value']>,
         {
             component: ExtensionAPIProviderFromVSCodeAPI,
             props: { vscodeAPI, staticDefaultContext },

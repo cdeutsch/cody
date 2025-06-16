@@ -43,3 +43,5 @@ export const Cell = forwardRef<HTMLDivElement, PropsWithChildren<CellProps>>((pr
         </div>
     )
 })
+
+Cell.displayName = 'Cell'

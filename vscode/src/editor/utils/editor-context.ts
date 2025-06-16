@@ -1,3 +1,4 @@
+// cspell:ignore toolmantim
 import fuzzysort from 'fuzzysort'
 import throttle from 'lodash/throttle'
 import * as vscode from 'vscode'
@@ -14,15 +15,14 @@ import {
     type RangeData,
     type SymbolKind,
     TokenCounterUtils,
-    contextFiltersProvider,
     currentOpenCtxController,
-    currentResolvedConfig,
     displayPath,
     firstResultFromOperation,
-    graphqlClient,
+    getFileContent,
+    getRemoteFiles,
+    getRemoteSymbols,
     isAbortError,
     isDefined,
-    isErrorLike,
     isWindows,
     logError,
     toRangeData,
@@ -74,24 +74,21 @@ export async function getFileContextFiles(options: FileContextItemsOptions): Pro
     // TODO [VK] Support fuzzy find logic that we have for local file resolution
     if (repositoriesNames) {
         const [filePath] = query?.split(':') || []
-        const filesOrError = await graphqlClient.getRemoteFiles(repositoriesNames, filePath)
+        const files = await getRemoteFiles(repositoriesNames, filePath)
 
-        if (isErrorLike(filesOrError)) {
-            return []
-        }
+        // if (isErrorLike(filesOrError)) {
+        //   return [];
+        // }
 
-        const ignoredRepoNames = new Map<string, boolean>(
-            await Promise.all(
-                filesOrError
-                    .map(item => item.repository.name)
-                    .map(
-                        async repoName =>
-                            [repoName, await contextFiltersProvider.isRepoNameIgnored(repoName)] as const
-                    )
-            )
-        )
+        // const ignoredRepoNames = new Map<string, boolean>(
+        //   await Promise.all(
+        //     filesOrError
+        //       .map((item) => item.repository.name)
+        //       .map(async (repoName) => [repoName, await contextFiltersProvider.isRepoNameIgnored(repoName)] as const)
+        //   )
+        // );
 
-        return filesOrError.map<ContextItemFile>(item => ({
+        return files.map<ContextItemFile>(item => ({
             range,
             type: 'file',
             // If range is presented we assume that file content passes size limitation
@@ -100,7 +97,8 @@ export async function getFileContextFiles(options: FileContextItemsOptions): Pro
             source: ContextItemSource.User,
             repoName: item.repository.name,
             remoteRepositoryName: item.repository.name,
-            isIgnored: ignoredRepoNames.get(item.repository.name),
+            // isIgnored: ignoredRepoNames.get(item.repository.name),
+            isIgnored: false,
             uri: URI.file(`${item.repository.name}/${item.file.path}`),
         }))
     }
@@ -151,6 +149,7 @@ export async function getFileContextFiles(options: FileContextItemsOptions): Pro
             }
         }
         // Apply a penalty for segments that are in the low scoring list.
+        // eslint-disable-next-line no-useless-escape
         const segments = result.obj.uri.path.split(/[\/\\]/).filter(segment => segment !== '')
         for (const lowScoringPathSegment of lowScoringPathSegments) {
             if (segments.includes(lowScoringPathSegment) && !query.includes(lowScoringPathSegment)) {
@@ -197,31 +196,29 @@ export async function getSymbolContextFiles(
     }
 
     if (remoteRepositoriesNames) {
-        const symbolsOrError = await graphqlClient.getRemoteSymbols(remoteRepositoriesNames, query)
+        const symbols = await getRemoteSymbols(remoteRepositoriesNames, query)
 
-        if (isErrorLike(symbolsOrError)) {
-            return []
-        }
+        // if (isErrorLike(symbolsOrError)) {
+        //   return [];
+        // }
 
-        const ignoredRepoNames = new Map<string, boolean>(
-            await Promise.all(
-                symbolsOrError
-                    .map(item => item.repository.name)
-                    .map(
-                        async repoName =>
-                            [repoName, await contextFiltersProvider.isRepoNameIgnored(repoName)] as const
-                    )
-            )
-        )
+        // const ignoredRepoNames = new Map<string, boolean>(
+        //   await Promise.all(
+        //     symbolsOrError
+        //       .map((item) => item.repository.name)
+        //       .map(async (repoName) => [repoName, await contextFiltersProvider.isRepoNameIgnored(repoName)] as const)
+        //   )
+        // );
 
-        return symbolsOrError
+        return symbols
             .flatMap<ContextItemSymbol>(item =>
                 item.symbols.map(symbol => ({
                     type: 'symbol',
                     repoName: item.repository.name,
                     remoteRepositoryName: item.repository.name,
                     uri: URI.file(`${item.repository.name}/${symbol.location.resource.path}`),
-                    isIgnored: ignoredRepoNames.get(item.repository.name),
+                    // isIgnored: ignoredRepoNames.get(item.repository.name),
+                    isIgnored: false,
                     source: ContextItemSource.User,
                     symbolName: symbol.name,
                     // TODO [VK] Support other symbols kind
@@ -346,7 +343,8 @@ async function createContextFileFromUri(
                   range,
                   source,
                   repoName,
-                  isIgnored: Boolean(await contextFiltersProvider.isUriIgnored(uri)),
+                  // isIgnored: Boolean(await contextFiltersProvider.isUriIgnored(uri)),
+                  isIgnored: false,
               }
             : {
                   type,
@@ -408,7 +406,7 @@ export async function resolveContextItems(
                         throw error
                     }
                     void vscode.window.showErrorMessage(
-                        `Cody could not include context from ${item.uri}. (Reason: ${error})`
+                        `Driver could not include context from ${item.uri}. (Reason: ${error})`
                     )
                     return null
                 }
@@ -513,19 +511,16 @@ async function resolveFileOrSymbolContextItem(
             ? { startLine: contextItem.range.start.line, endLine: contextItem.range.end.line + 1 }
             : undefined
 
-        const { auth } = await currentResolvedConfig()
-        const resultOrError = await graphqlClient.getFileContent(repository, path, ranges, signal)
+        const result = await getFileContent(repository, path, ranges, signal)
 
-        if (!isErrorLike(resultOrError)) {
-            return {
-                ...contextItem,
-                title: path,
-                uri: URI.parse(`${auth.serverEndpoint}${repository}/-/blob${path}`),
-                content: resultOrError,
-                repoName: repository,
-                source: ContextItemSource.Unified,
-                size: await TokenCounterUtils.countTokens(resultOrError),
-            }
+        return {
+            ...contextItem,
+            title: path,
+            uri: URI.parse(`${repository}/-/blob${path}`),
+            content: result,
+            repoName: repository,
+            source: ContextItemSource.Unified,
+            size: await TokenCounterUtils.countTokens(result),
         }
     }
 

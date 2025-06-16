@@ -215,6 +215,7 @@ export const MentionsPlugin: FunctionComponent<{
                     contextWindowSizeInTokens === undefined
                         ? Number.MAX_SAFE_INTEGER
                         : contextWindowSizeInTokens - tokenAdded
+                // eslint-disable-next-line react-hooks/rules-of-hooks
                 const data = useMentionMenuData(params, {
                     remainingTokenBudget,
                     limit: SUGGESTION_LIST_LENGTH_LIMIT,
@@ -249,6 +250,8 @@ export const MentionsPlugin: FunctionComponent<{
         />
     )
 }, isEqual)
+
+MentionsPlugin.displayName = 'MentionsPlugin'
 
 function sharedPrefixLength(s1: string, s2: string): number {
     let i = 0

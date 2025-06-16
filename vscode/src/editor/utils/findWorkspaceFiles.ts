@@ -49,6 +49,11 @@ async function getExcludePattern(workspaceFolder: vscode.WorkspaceFolder | null)
     return `{${excludePatterns.join(',')}}`
 }
 
+function escapeGlobPattern(pattern: string): string {
+    // Escape special characters in glob patterns: ?, *, [, ], {, }, (, ), |, +, ., ^, $, @, !, \
+    return pattern.replace(/[?*[\]{}()|+.^$@!\\]/g, '\\$&')
+}
+
 async function readIgnoreFile(uri: vscode.Uri): Promise<IgnoreRecord> {
     const ignore: IgnoreRecord = {}
     try {
@@ -71,8 +76,10 @@ async function readIgnoreFile(uri: vscode.Uri): Promise<IgnoreRecord> {
             if (!line.startsWith('/') && !line.startsWith('**/')) {
                 line = `**/${line}`
             }
-            ignore[line] = true
+            ignore[escapeGlobPattern(line)] = true
         }
-    } catch {}
+    } catch {
+        // console.error('Error reading ignore file', uri);
+    }
     return ignore
 }

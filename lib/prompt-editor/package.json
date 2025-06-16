@@ -2,7 +2,7 @@
   "name": "@sourcegraph/prompt-editor",
   "version": "0.0.1",
   "description": "Shared prompt editor UI component",
-  "license": "Apache-2.0",
+  "license": "UNLICENSED",
   "repository": {
     "type": "git",
     "url": "https://github.com/sourcegraph/cody",
@@ -11,7 +11,11 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist", "src", "!**/*.test.*"],
+  "files": [
+    "dist",
+    "src",
+    "!**/*.test.*"
+  ],
   "sideEffects": false,
   "scripts": {
     "build": "tsc --build",

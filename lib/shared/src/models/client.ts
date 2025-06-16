@@ -1,2 +1,2 @@
-export const DeepCodyAgentID = 'deep-cody'
-export const ToolCodyModelName = 'tool-cody'
+export const DeepDriverAgentID = 'deep-driver'
+export const ToolDriverModelName = 'tool-driver'

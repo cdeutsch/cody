@@ -1,6 +1,6 @@
 import { forceHydration, hydrateAfterPostMessage } from '@sourcegraph/cody-shared'
-import type { ExtensionMessage } from 'cody-ai/src/chat/protocol'
-import { type VSCodeWrapper, setVSCodeWrapper } from 'cody-ai/webviews/utils/VSCodeApi'
+import type { ExtensionMessage } from 'driver-ai/src/chat/protocol'
+import { type VSCodeWrapper, setVSCodeWrapper } from 'driver-ai/webviews/utils/VSCodeApi'
 import { type MutableRefObject, useEffect, useState } from 'react'
 import { URI } from 'vscode-uri'
 import { type AgentClient, createAgentClient } from '../agent/agent.client'

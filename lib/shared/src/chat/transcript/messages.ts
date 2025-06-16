@@ -4,12 +4,15 @@ import type { Message } from '../../sourcegraph-api'
 import type { SerializedChatTranscript } from '.'
 import type { MessagePart } from '../..'
 import type { PromptString } from '../../prompt/prompt-string'
-import type { NLSSearchDynamicFilter, NLSSearchResponse } from '../../sourcegraph-api/graphql/client'
+import type {
+    NLSSearchDynamicFilter,
+    NLSSearchResponse,
+} from '../../sourcegraph-api/graphql/client-types'
 
 /**
  * The list of context items (most important first) along with
  * a string label for the strategy used to obtain the context.
- * The strategy denotes both the retrieval and reranking mechanism.
+ * The strategy denotes both the retrieval and re-ranking mechanism.
  */
 export type RankedContext = {
     strategy: string
@@ -40,7 +43,7 @@ export interface ChatMessage extends Message {
     /**
      * The model used to generate this chat message response. Not set on human messages.
      */
-    model?: string
+    // model?: string;
 
     /* The detected intent of the message */
     intent?: 'search' | 'chat' | 'edit' | 'insert' | 'agentic' | undefined | null
@@ -49,6 +52,9 @@ export interface ChatMessage extends Message {
     search?: ChatMessageSearch | undefined | null
     agent?: string | undefined | null
     processes?: ProcessingStep[] | undefined | null
+
+    /* Driver: */
+    sourceNodeIds?: string[] | undefined | null
 
     /**
      * An experimental field intended to enable assistant messages to be broken down
@@ -143,6 +149,7 @@ export interface SerializedChatMessage {
     processes?: ProcessingStep[] | undefined | null
     subMessages?: SubMessage[]
     content?: MessagePart[] | undefined | null
+    sourceNodeIds?: string[] | undefined | null
 }
 
 export interface ChatError {
@@ -188,7 +195,7 @@ export const DEFAULT_EVENT_SOURCE = 'editor'
 export type EventSource =
     | typeof DEFAULT_EVENT_SOURCE
     | 'chat'
-    | 'menu' // Cody command palette
+    | 'menu' // Driver command palette
     | 'sidebar'
     | 'code-action:explain'
     | 'code-action:document'

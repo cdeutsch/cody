@@ -1,161 +1,105 @@
 import {
     type AuthCredentials,
     type AuthStatus,
-    type BillingCategory,
-    type BillingProduct,
-    CHAT_OUTPUT_TOKEN_BUDGET,
-    type ChatClient,
     type ChatMessage,
-    type ChatModel,
-    type ClientActionBroadcast,
-    ClientConfigSingleton,
-    type CodyClientConfig,
     type ContextItem,
+    type ContextItemOpenCtx,
     ContextItemSource,
-    DOTCOM_URL,
+    type ContextMessage,
     type DefaultChatCommands,
     type EventSource,
     FeatureFlag,
-    GuardrailsMode,
-    ModelTag,
-    ModelUsage,
-    type NLSSearchDynamicFilter,
+    PrimaryAsset,
+    ProcessType,
     type ProcessingStep,
     PromptString,
-    type RateLimitError,
+    type RankedContext,
     type SerializedChatInteraction,
     type SerializedChatTranscript,
     type SerializedPromptEditorState,
-    type SourcegraphGuardrailsClient,
     addMessageListenersForExtensionAPI,
     authStatus,
-    cenv,
     clientCapabilities,
     createMessageAPIForExtension,
     currentAuthStatus,
     currentAuthStatusAuthed,
     currentResolvedConfig,
-    currentUserProductSubscription,
-    distinctUntilChanged,
-    extractContextFromTraceparent,
     featureFlagProvider,
-    firstResultFromOperation,
-    firstValueFrom,
     forceHydration,
-    getDefaultSystemPrompt,
-    graphqlClient,
-    handleRateLimitError,
+    getAuthHeadersForCurrentConfig,
+    getBaseApiUrl,
+    getContextForChatMessage,
+    getPrimaryAsset,
+    getPrimaryAssetByRepoName,
+    getRepoList,
+    getTree,
     hydrateAfterPostMessage,
+    inputTextWithoutContextChipsFromPromptEditorState,
     isAbortErrorOrSocketHangUp,
-    isContextWindowLimitError,
+    isAuthError,
     isDefined,
-    isDotCom,
     isError,
-    isRateLimitError,
-    isS2,
     logError,
-    modelsService,
-    pendingOperation,
     promiseFactoryToObservable,
-    ps,
-    recordErrorToSpan,
     reformatBotMessageForChat,
     resolvedConfig,
+    sanitizeMessages,
     serializeChatMessage,
-    serializeContextItem,
     shareReplay,
-    skip,
     skipPendingOperation,
-    startWith,
     subscriptionDisposable,
     switchMap,
-    telemetryRecorder,
-    tracer,
-    truncatePromptString,
-    userProductSubscription,
     wrapInActiveSpan,
 } from '@sourcegraph/cody-shared'
 import * as uuid from 'uuid'
 import * as vscode from 'vscode'
 
-import { type Span, context } from '@opentelemetry/api'
-import { captureException } from '@sentry/core'
+import type { Span } from '@opentelemetry/api'
 import { ChatHistoryType } from '@sourcegraph/cody-shared/src/chat/transcript'
-import type { SubMessage } from '@sourcegraph/cody-shared/src/chat/transcript/messages'
 import { resolveAuth } from '@sourcegraph/cody-shared/src/configuration/auth-resolver'
-import type { McpServer } from '@sourcegraph/cody-shared/src/llm-providers/mcp/types'
-import type { TelemetryEventParameters } from '@sourcegraph/telemetry'
-import { Observable, Subject, map } from 'observable-fns'
+import { map } from 'observable-fns'
 import type { URI } from 'vscode-uri'
 import { View } from '../../../webviews/tabs/types'
-import { redirectToEndpointLogin, showSignInMenu, showSignOutMenu, signOut } from '../../auth/auth'
+import { signOut } from '../../auth/auth'
 import {
     closeAuthProgressIndicator,
     startAuthProgressIndicator,
 } from '../../auth/auth-progress-indicator'
-import type { startTokenReceiver } from '../../auth/token-receiver'
-import { getCurrentUserId } from '../../auth/user'
-import { getContextFileFromUri } from '../../commands/context/file-path'
-import { getContextFileFromCursor } from '../../commands/context/selection'
-import {
-    getFrequentlyUsedContextItems,
-    saveFrequentlyUsedContextItems,
-} from '../../context/frequentlyUsed'
-import { getEditor } from '../../editor/active-editor'
+import { resolveContextItems } from '../../editor/utils/editor-context'
 import type { VSCodeEditor } from '../../editor/vscode-editor'
 import type { ExtensionClient } from '../../extension-client'
-import { migrateAndNotifyForOutdatedModels } from '../../models/modelMigrator'
-import { logDebug, outputChannelLogger } from '../../output-channel-logger'
+import { getGitRepositoryName } from '../../git-utils'
+import { logDebug } from '../../output-channel-logger'
+import { getCategorizedMentions } from '../../prompt-builder/utils'
 import { hydratePromptText } from '../../prompts/prompt-hydration'
-import { listPromptTags, mergedPromptsAndLegacyCommands } from '../../prompts/prompts'
-import { workspaceFolderForRepo } from '../../repository/remoteRepos'
-import { repoNameResolver } from '../../repository/repo-name-resolver'
 import { authProvider } from '../../services/AuthProvider'
 import { AuthProviderSimplified } from '../../services/AuthProviderSimplified'
-import { localStorage } from '../../services/LocalStorageProvider'
 import { secretStorage } from '../../services/SecretStorageProvider'
-import { TraceSender } from '../../services/open-telemetry/trace-sender'
-import {
-    handleCodeFromInsertAtCursor,
-    handleCodeFromSaveToNewFile,
-    handleCopiedCode,
-    handleSmartApply,
-} from '../../services/utils/codeblock-action-tracker'
 import { openExternalLinks } from '../../services/utils/workspace-action'
-import { TestSupport } from '../../test-support'
 import type { MessageErrorType } from '../MessageProvider'
-import { DeepCodyAgent } from '../agentic/DeepCody'
-import { toolboxManager } from '../agentic/ToolboxManager'
 import { getMentionMenuData } from '../context/chatContext'
 import { observeDefaultContext } from '../initialContext'
 import type {
     ConfigurationSubsetForWebview,
     ExtensionMessage,
     LocalEnv,
-    SmartApplyResult,
     WebviewMessage,
 } from '../protocol'
-import { countGeneratedCode } from '../utils'
 import { ChatBuilder, prepareChatMessage } from './ChatBuilder'
 import { chatHistory } from './ChatHistoryManager'
-import { CodyChatEditorViewType } from './ChatsController'
-import { CodeBlockRegenerator, type RegenerateRequestParams } from './CodeBlockRegenerator'
-import type { ContextRetriever } from './ContextRetriever'
+import { type ContextRetriever, toStructuredMentions } from './ContextRetriever'
 import { InitDoer } from './InitDoer'
-import { getChatPanelTitle, isCodyTesting } from './chat-helpers'
-import { OmniboxTelemetry } from './handlers/OmniboxTelemetry'
-import { getAgent } from './handlers/registry'
-import { getPromptsMigrationInfo, startPromptsMigration } from './prompts-migration'
-import { MCPManager } from './tools/MCPManager'
+import type { HumanInput } from './context'
+import { DefaultPrompter } from './prompt'
+
+export const ChatEditorViewType = 'driver-ai.editorPanel'
+export const ChatSidebarViewType = 'driver-ai.chat'
 
 export interface ChatControllerOptions {
     extensionUri: vscode.Uri
-    chatClient: Pick<ChatClient, 'chat'>
-    contextRetriever: Pick<ContextRetriever, 'retrieveContext' | 'computeDidYouMean'>
-    extensionClient: Pick<ExtensionClient, 'capabilities'>
+    contextRetriever: Pick<ContextRetriever, 'retrieveContext'>
     editor: VSCodeEditor
-    guardrails: SourcegraphGuardrailsClient
-    startTokenReceiver?: typeof startTokenReceiver
+    extensionClient: Pick<ExtensionClient, 'capabilities'>
 }
 
 export interface ChatSession {
@@ -193,48 +137,28 @@ export interface ChatSession {
 export class ChatController implements vscode.Disposable, vscode.WebviewViewProvider, ChatSession {
     private chatBuilder: ChatBuilder
 
-    private readonly chatClient: ChatControllerOptions['chatClient']
+    private primaryAssetId: string | undefined
+    private repoName: string | undefined
 
     private readonly contextRetriever: ChatControllerOptions['contextRetriever']
 
     private readonly editor: ChatControllerOptions['editor']
     private readonly extensionClient: ChatControllerOptions['extensionClient']
-    private readonly guardrails: SourcegraphGuardrailsClient
-
-    private readonly startTokenReceiver: typeof startTokenReceiver | undefined
 
     private disposables: vscode.Disposable[] = []
-
-    public readonly clientBroadcast = new Subject<ClientActionBroadcast>()
 
     public dispose(): void {
         vscode.Disposable.from(...this.disposables).dispose()
         this.disposables = []
     }
 
-    constructor({
-        extensionUri,
-        chatClient,
-        editor,
-        guardrails,
-        startTokenReceiver,
-        contextRetriever,
-        extensionClient,
-    }: ChatControllerOptions) {
+    constructor({ extensionUri, editor, contextRetriever, extensionClient }: ChatControllerOptions) {
         this.extensionUri = extensionUri
-        this.chatClient = chatClient
         this.editor = editor
         this.extensionClient = extensionClient
         this.contextRetriever = contextRetriever
 
         this.chatBuilder = new ChatBuilder(undefined)
-
-        this.guardrails = guardrails
-        this.startTokenReceiver = startTokenReceiver
-
-        if (TestSupport.instance) {
-            TestSupport.instance.chatPanelProvider.set(this)
-        }
 
         this.disposables.push(
             subscriptionDisposable(
@@ -243,33 +167,32 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
                     // and awaiting on this.postMessage may result in a deadlock
                     void this.sendConfig(authStatus)
                 })
-            ),
-            subscriptionDisposable(
-                ClientConfigSingleton.getInstance().updates.subscribe(update => {
-                    // Run this async because this method may be called during initialization
-                    // and awaiting on this.postMessage may result in a deadlock
-                    void this.sendClientConfig(update)
-                })
-            ),
-
-            // Reset the chat when the endpoint changes so that we don't try to use old models.
-            subscriptionDisposable(
-                authStatus
-                    .pipe(
-                        map(authStatus => authStatus.endpoint),
-                        distinctUntilChanged(),
-                        // Skip the initial emission (which occurs immediately upon subscription)
-                        // because we only want to reset it when it changes after the ChatController
-                        // has been in use. If we didn't have `skip(1)`, then `new
-                        // ChatController().restoreSession(...)` usage would break because we would
-                        // immediately overwrite the just-restored chat.
-                        skip(1)
-                    )
-                    .subscribe(() => {
-                        this.chatBuilder = new ChatBuilder(undefined)
-                    })
             )
         )
+    }
+
+    private async getPrimaryAssetId(): Promise<string | undefined> {
+        try {
+            this.repoName = await getGitRepositoryName()
+
+            const primaryAsset = await getPrimaryAssetByRepoName(this.repoName)
+
+            return primaryAsset?.id
+        } catch (error) {
+            logError('ChatController: getPrimaryAssetId', 'Error getting primary asset id', error)
+            if (!isAuthError(error)) {
+                const errorMessage = 'Failed to check if Driver contains this repository.'
+                void vscode.window.showErrorMessage(errorMessage)
+                this.postError(new Error(errorMessage))
+            }
+            return undefined
+        }
+    }
+
+    private async syncPrimaryAssetId(): Promise<void> {
+        this.primaryAssetId = await this.getPrimaryAssetId()
+        this.chatBuilder.setPrimaryAssetId(this.primaryAssetId)
+        await this.postViewTranscript()
     }
 
     /**
@@ -279,6 +202,7 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
     private async onDidReceiveMessage(message: WebviewMessage): Promise<void> {
         switch (message.command) {
             case 'ready':
+                await this.syncPrimaryAssetId()
                 await this.handleReady()
                 break
             case 'initialized':
@@ -294,7 +218,7 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
                     signal: this.startNewSubmitOrEditOperation(),
                     source: 'chat',
                     manuallySelectedIntent: message.manuallySelectedIntent,
-                    traceparent: message.traceparent,
+                    sourceNodeIds: message.sourceNodeIds,
                 })
                 break
             }
@@ -308,49 +232,12 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
                     contextFiles: message.contextItems ?? [],
                     editorState: message.editorState as SerializedPromptEditorState,
                     manuallySelectedIntent: message.manuallySelectedIntent,
-                })
-                break
-            }
-            case 'reevaluateSearchWithSelectedFilters': {
-                await this.reevaluateSearchWithSelectedFilters({
-                    index: message.index ?? undefined,
-                    selectedFilters: message.selectedFilters,
+                    sourceNodeIds: message.sourceNodeIds,
                 })
                 break
             }
             case 'abort':
                 this.handleAbort()
-                break
-            case 'insert':
-                await handleCodeFromInsertAtCursor(message.text)
-                break
-            case 'copy':
-                await handleCopiedCode(message.text, message.eventType === 'Button')
-                break
-            case 'smartApplyPrefetch':
-            case 'smartApplySubmit':
-                await handleSmartApply({
-                    id: message.id,
-                    code: message.code,
-                    authStatus: currentAuthStatus(),
-                    instruction: message.instruction || '',
-                    fileUri: message.fileName,
-                    traceparent: message.traceparent || undefined,
-                    isPrefetch: message.command === 'smartApplyPrefetch',
-                })
-                break
-            case 'trace-export':
-                TraceSender.send(message.traceSpanEncodedJson)
-                break
-            case 'smartApplyAccept':
-                await vscode.commands.executeCommand('cody.command.smart-apply.accept', {
-                    taskId: message.id,
-                })
-                break
-            case 'smartApplyReject':
-                await vscode.commands.executeCommand('cody.command.smart-apply.reject', {
-                    taskId: message.id,
-                })
                 break
             case 'openURI':
                 vscode.commands.executeCommand('vscode.open', message.uri, {
@@ -363,10 +250,10 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
             }
             case 'openFileLink':
                 {
-                    if (message?.uri?.scheme?.startsWith('http')) {
-                        this.openRemoteFile(message.uri, true)
-                        return
-                    }
+                    // if (message?.uri?.scheme?.startsWith('http')) {
+                    //     this.openRemoteFile(message.uri, true)
+                    //     return
+                    // }
 
                     // Determine if we're in the sidebar view
                     const isInSidebar =
@@ -382,17 +269,8 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
                     })
                 }
                 break
-            case 'openRemoteFile':
-                this.openRemoteFile(message.uri, message.tryLocal ?? false)
-                break
-            case 'newFile':
-                await handleCodeFromSaveToNewFile(message.text, this.editor)
-                break
             case 'show-page':
                 await vscode.commands.executeCommand('cody.show-page', message.page)
-                break
-            case 'attribution-search':
-                await this.handleAttributionSearch(message.snippet)
                 break
             case 'restoreHistory':
                 this.restoreSession(message.chatID)
@@ -401,7 +279,7 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
             case 'chatSession':
                 switch (message.action) {
                     case 'new':
-                        this.clearAndRestartSession()
+                        await this.clearAndRestartSession()
                         break
                     case 'duplicate':
                         await this.duplicateSession(message.sessionID ?? this.chatBuilder.sessionID)
@@ -411,186 +289,58 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
             case 'command':
                 vscode.commands.executeCommand(message.id, message.arg ?? message.args)
                 break
-            case 'mcp': {
-                try {
-                    const mcpManager = MCPManager.instance
-                    if (!mcpManager) {
-                        throw new Error('MCP Manager is not initialized')
-                    }
-                    // All other operations require a server name
-                    if (!message.name) {
-                        // Special case for updateServer without name (to refresh server list)
-                        if (message.type === 'updateServer') {
-                            await mcpManager.refreshServers()
-                            break
-                        }
-                        throw new Error('Missing name property in MCP message')
-                    }
-                    switch (message.type) {
-                        case 'addServer':
-                            if (!message.config) {
-                                throw new Error('Missing config for addServer operation')
-                            }
-                            try {
-                                await mcpManager.addServer(message.name, message.config)
 
-                                // Send specific message to the UI about the new server
-                                const newServer = mcpManager
-                                    .getServers()
-                                    .find(s => s.name === message.name)
-                                if (newServer) {
-                                    void this.postMessage({
-                                        type: 'clientAction',
-                                        mcpServerChanged: {
-                                            name: newServer.name,
-                                            server: newServer,
-                                        },
-                                    })
-                                }
-                            } catch (error) {
-                                const errorMessage =
-                                    error instanceof Error ? error.message : String(error)
-                                vscode.window.showErrorMessage(`Failed to add server: ${errorMessage}`)
-                                throw error
-                            }
-                            break
-                        case 'updateServer':
-                            if (message.config) {
-                                // Update with full config
-                                await mcpManager.updateServer(message.name, message.config)
-                            } else if (message.toolName) {
-                                // Toggle single tool state
-                                const isDisabled = message.toolDisabled === true
-                                await mcpManager.setToolState(message.name, message.toolName, isDisabled)
-                            }
-                            break
-                        case 'removeServer':
-                            if (!message.name) {
-                                throw new Error('Missing name for removeServer operation')
-                            }
-                            try {
-                                // Store server name before deleting it
-                                const serverName = message.name
-                                await mcpManager.deleteServer(serverName)
-                                this.postMessage({
-                                    type: 'clientAction',
-                                    mcpServerChanged: {
-                                        name: serverName,
-                                        server: null,
-                                    },
-                                })
-                            } catch (error) {
-                                const errorMessage =
-                                    error instanceof Error ? error.message : String(error)
-                                vscode.window.showErrorMessage(
-                                    `Failed to remove server: ${errorMessage}`
-                                )
-                                throw error
-                            }
-                            break
-
-                        default:
-                            throw new Error(`Unknown MCP operation: ${message.type}`)
-                    }
-                } catch (error) {
-                    const errorMessage = error instanceof Error ? error.message : String(error)
-                    void this.postMessage({
-                        type: 'clientAction',
-                        mcpServerError: {
-                            name: 'name' in message ? message.name : '',
-                            error: errorMessage,
-                        },
-                        mcpServerChanged: null,
-                    })
-                }
-                break
-            }
-
-            case 'recordEvent':
-                telemetryRecorder.recordEvent(
-                    // 👷 HACK: We have no control over what gets sent over JSON RPC,
-                    // so we depend on client implementations to give type guidance
-                    // to ensure that we don't accidentally share arbitrary,
-                    // potentially sensitive string values. In this RPC handler,
-                    // when passing the provided event to the TelemetryRecorder
-                    // implementation, we forcibly cast all the inputs below
-                    // (feature, action, parameters) into known types (strings
-                    // 'feature', 'action', 'key') so that the recorder will accept
-                    // it. DO NOT do this elsewhere!
-                    message.feature as 'feature',
-                    message.action as 'action',
-                    message.parameters as TelemetryEventParameters<
-                        { key: number },
-                        BillingProduct,
-                        BillingCategory
-                    >
-                )
-                break
-            case 'auth': {
+            case 'auth':
                 if (message.authKind === 'refresh') {
                     authProvider.refresh()
                     break
                 }
                 if (message.authKind === 'simplified-onboarding') {
-                    const endpoint = DOTCOM_URL.href
-
-                    let tokenReceiverUrl: string | undefined = undefined
                     closeAuthProgressIndicator()
                     startAuthProgressIndicator()
-                    tokenReceiverUrl = await this.startTokenReceiver?.(endpoint, async credentials => {
-                        closeAuthProgressIndicator()
-                        const authStatus = await authProvider.validateAndStoreCredentials(
-                            credentials,
-                            'store-if-valid'
-                        )
-                        telemetryRecorder.recordEvent('cody.auth.fromTokenReceiver.web', 'succeeded', {
-                            metadata: {
-                                success: authStatus.authenticated ? 1 : 0,
-                            },
-                            billingMetadata: {
-                                product: 'cody',
-                                category: 'billable',
-                            },
-                        })
-                        if (!authStatus.authenticated) {
-                            void vscode.window.showErrorMessage(
-                                'Authentication failed. Please check your token and try again.'
-                            )
-                        }
-                    })
 
                     const authProviderSimplified = new AuthProviderSimplified()
-                    const authMethod = message.authMethod || 'dotcom'
-                    const successfullyOpenedUrl = await authProviderSimplified.openExternalAuthUrl(
-                        authMethod,
-                        tokenReceiverUrl
-                    )
+                    const successfullyOpenedUrl = await authProviderSimplified.openExternalAuthUrl()
                     if (!successfullyOpenedUrl) {
                         closeAuthProgressIndicator()
                     }
-                    break
+
+                    // const response = await authManager.login();
+                    // closeAuthProgressIndicator();
+                    // if (response) {
+                    //   const credentials: AuthCredentials = {
+                    //     credentials: { token: response.access_token, source: 'redirect' },
+                    //   };
+                    //   const authStatus = await authProvider.validateAndStoreCredentials(credentials, 'store-if-valid');
+                    //   if (!authStatus.authenticated) {
+                    //     void vscode.window.showErrorMessage('Authentication failed. Please check your token and try again.');
+                    //   } else {
+                    //     await this.syncPrimaryAssetId();
+                    //     await this.syncChatBuilderPrimaryAsset(this.primaryAssetId);
+                    //   }
+                    // } else {
+                    //   void vscode.window.showErrorMessage('Authentication failed. Login did not complete.');
+                    // }
                 }
-                if (
-                    (message.authKind === 'signin' || message.authKind === 'callback') &&
-                    message.endpoint
-                ) {
+                if (message.authKind === 'signin' || message.authKind === 'callback') {
+                    // 🐉🐉🐉
+                    // THIS IS UNTESTED AND WAS UNUSED IN THE PAST
                     try {
-                        const { endpoint, value: token } = message
+                        const { value: token } = message
                         let auth: AuthCredentials | undefined = undefined
 
                         if (token) {
                             auth = {
                                 credentials: { token, source: 'paste' },
-                                serverEndpoint: endpoint,
                             }
                         } else {
                             const { configuration } = await currentResolvedConfig()
-                            auth = await resolveAuth(endpoint, configuration, secretStorage)
+                            auth = await resolveAuth(configuration, secretStorage)
                         }
 
-                        if (!auth || !auth.credentials) {
-                            return redirectToEndpointLogin(endpoint)
-                        }
+                        // if (!auth || !auth.credentials) {
+                        //   return redirectToEndpointLogin(endpoint);
+                        // }
 
                         await authProvider.validateAndStoreCredentials(auth, 'always-store')
                     } catch (error) {
@@ -600,115 +350,32 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
                     break
                 }
                 if (message.authKind === 'signout') {
-                    const serverEndpoint = message.endpoint
-                    if (serverEndpoint) {
-                        await signOut(serverEndpoint)
-                    } else {
-                        await showSignOutMenu()
-                    }
+                    await signOut()
+
                     // Send config to refresh the endpoint history list.
                     // TODO: Remove this when the config for webview is observable, see getConfigForWebview.
                     await this.sendConfig(currentAuthStatus())
                     break
                 }
-                if (message.authKind === 'switch') {
-                    await showSignInMenu()
-                    break
-                }
-                // cody.auth.signin or cody.auth.signout
-                await vscode.commands.executeCommand(`cody.auth.${message.authKind}`)
                 break
-            }
-            case 'simplified-onboarding': {
-                if (message.onboardingKind === 'web-sign-in-token') {
-                    void vscode.window
-                        .showInputBox({ prompt: 'Enter web sign-in token' })
-                        .then(async token => {
-                            if (!token) {
-                                return
-                            }
-                            const authStatus = await authProvider.validateAndStoreCredentials(
-                                {
-                                    serverEndpoint: DOTCOM_URL.href,
-                                    credentials: { token },
-                                },
-                                'store-if-valid'
-                            )
-                            if (!authStatus.authenticated) {
-                                void vscode.window.showErrorMessage(
-                                    'Authentication failed. Please check your token and try again.'
-                                )
-                            }
-                        })
-                    break
-                }
-                break
-            }
+
             case 'log': {
                 const logger = message.level === 'debug' ? logDebug : logError
                 logger(message.filterLabel, message.message)
                 break
             }
-            case 'devicePixelRatio': {
-                localStorage.setDevicePixelRatio(message.devicePixelRatio)
-                break
-            }
-            case 'regenerateCodeBlock': {
-                await this.handleRegenerateCodeBlock({
-                    requestID: message.id,
-                    code: PromptString.unsafe_fromLLMResponse(message.code),
-                    language: message.language
-                        ? PromptString.unsafe_fromLLMResponse(message.language)
-                        : undefined,
-                    index: message.index,
-                })
-                break
-            }
         }
     }
 
-    private isSmartApplyEnabled(): boolean {
-        return this.extensionClient.capabilities?.edit !== 'none'
-    }
-
-    private hasEditCapability(): boolean {
-        return this.extensionClient.capabilities?.edit === 'enabled'
-    }
-
     private async getConfigForWebview(): Promise<ConfigurationSubsetForWebview & LocalEnv> {
-        const { configuration, auth } = await currentResolvedConfig()
-        const [experimentalPromptEditorEnabled, internalAgenticChatEnabled] = await Promise.all([
-            firstValueFrom(
-                featureFlagProvider.evaluatedFeatureFlag(FeatureFlag.CodyExperimentalPromptEditor)
-            ),
-            firstValueFrom(
-                featureFlagProvider.evaluatedFeatureFlag(FeatureFlag.NextAgenticChatInternal)
-            ),
-        ])
-        const experimentalAgenticChatEnabled = internalAgenticChatEnabled && isS2(auth.serverEndpoint)
-        const sidebarViewOnly = this.extensionClient.capabilities?.webviewNativeConfig?.view === 'single'
-        const isEditorViewType = this.webviewPanelOrView?.viewType === 'cody.editorPanel'
-        const webviewType = isEditorViewType && !sidebarViewOnly ? 'editor' : 'sidebar'
-        const uiKindIsWeb = (cenv.CODY_OVERRIDE_UI_KIND ?? vscode.env.uiKind) === vscode.UIKind.Web
-        const endpoints = localStorage.getEndpointHistory() ?? []
-        const attribution =
-            (await ClientConfigSingleton.getInstance().getConfig())?.attribution ?? GuardrailsMode.Off
+        const isEditorViewType = this.webviewPanelOrView?.viewType === ChatEditorViewType
+        const webviewType = isEditorViewType ? 'editor' : 'sidebar'
+        const uiKindIsWeb = vscode.env.uiKind === vscode.UIKind.Web
 
         return {
             uiKindIsWeb,
-            serverEndpoint: auth.serverEndpoint,
-            endpointHistory: [...endpoints],
-            experimentalNoodle: configuration.experimentalNoodle,
-            // Disable smart apply codeblock toolbar when agentic chat is enabled.
-            smartApply: this.isSmartApplyEnabled(),
-            hasEditCapability: this.hasEditCapability(),
             webviewType,
-            multipleWebviewsEnabled: !sidebarViewOnly,
-            internalDebugContext: configuration.internalDebugContext,
-            allowEndpointChange: configuration.overrideServerEndpoint === undefined,
-            experimentalPromptEditorEnabled,
-            experimentalAgenticChatEnabled,
-            attribution,
+            multipleWebviewsEnabled: true,
         }
     }
 
@@ -718,6 +385,8 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
 
     // When the webview sends the 'ready' message, respond by posting the view config
     private async handleReady(): Promise<void> {
+        await this.syncChatBuilderPrimaryAsset(this.primaryAssetId)
+
         await this.sendConfig(currentAuthStatus())
     }
 
@@ -736,22 +405,10 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
             config: configForWebview,
             clientCapabilities: clientCapabilities(),
             authStatus: authStatus,
-            userProductSubscription: await currentUserProductSubscription(),
             workspaceFolderUris,
-            isDotComUser: isDotCom(authStatus),
         })
         logDebug('ChatController', 'updateViewConfig', {
             verbose: configForWebview,
-        })
-    }
-
-    private async sendClientConfig(clientConfig: CodyClientConfig) {
-        await this.postMessage({
-            type: 'clientConfig',
-            clientConfig,
-        })
-        logDebug('ChatController', 'updateClientConfig', {
-            verbose: clientConfig,
         })
     }
 
@@ -765,16 +422,10 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
             type: 'transcript',
             messages: [],
             isMessageInProgress: false,
-            chatID: this.chatBuilder.sessionID,
         })
 
         void this.saveSession()
         this.initDoer.signalInitialized()
-    }
-
-    async regenerateCodeBlock(params: RegenerateRequestParams): Promise<PromptString> {
-        const regenerator = new CodeBlockRegenerator(this.chatClient)
-        return await regenerator.regenerate(params)
     }
 
     /**
@@ -789,7 +440,7 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
         source,
         command,
         manuallySelectedIntent,
-        traceparent,
+        sourceNodeIds,
     }: {
         requestID: string
         inputText: PromptString
@@ -800,57 +451,22 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
         command?: DefaultChatCommands
         manuallySelectedIntent?: ChatMessage['intent'] | undefined | null
         traceparent?: string | undefined | null
-        model?: string | undefined
+        sourceNodeIds?: string[] | undefined | null
     }): Promise<void> {
-        return context.with(extractContextFromTraceparent(traceparent), () => {
-            return tracer.startActiveSpan('chat.handleUserMessage', async (span): Promise<void> => {
-                span.setAttribute('sampled', true)
-                span.setAttribute('continued', true)
-                outputChannelLogger.logDebug(
-                    'ChatController',
-                    'handleUserMessageSubmission',
-                    `traceId: ${span.spanContext().traceId}`
-                )
-                // TODO: Pass the model name from webview on submit instead of fetching it here
-                const model = await wrapInActiveSpan('chat.resolveModel', () =>
-                    firstResultFromOperation(ChatBuilder.resolvedModelForChat(this.chatBuilder))
-                )
-
-                this.chatBuilder.setSelectedModel(model)
-
-                this.chatBuilder.addHumanMessage({
-                    text: inputText,
-                    editorState,
-                    intent: manuallySelectedIntent,
-                    agent: toolboxManager.isAgenticChatEnabled() ? DeepCodyAgent.id : undefined,
-                })
-
-                this.setCustomChatTitle(requestID, inputText, signal)
-                this.postViewTranscript({ speaker: 'assistant' })
-
-                await this.saveSession()
-                signal.throwIfAborted()
-
-                return this.sendChat(
-                    {
-                        requestID,
-                        inputText,
-                        mentions,
-                        editorState,
-                        signal,
-                        source,
-                        command,
-                        manuallySelectedIntent,
-                        model,
-                    },
-                    span
-                )
-            })
+        this.chatBuilder.addHumanMessage({
+            text: inputText,
+            editorState,
+            intent: manuallySelectedIntent,
+            sourceNodeIds,
         })
-    }
 
-    private async sendChat(
-        {
+        this.setCustomChatTitle(requestID, inputText, signal)
+        this.postViewTranscript({ speaker: 'assistant' })
+
+        await this.saveSession()
+        signal.throwIfAborted()
+
+        return this.sendChat({
             requestID,
             inputText,
             mentions,
@@ -859,285 +475,327 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
             source,
             command,
             manuallySelectedIntent,
-            model,
-        }: Parameters<typeof this.handleUserMessage>[0],
-        span: Span
-    ): Promise<void> {
-        if (!model) {
-            throw new Error('No model selected, and no default chat model is available')
-        }
-
-        span.addEvent('ChatController.sendChat')
-        signal.throwIfAborted()
-
-        const recorder = await OmniboxTelemetry.create({
-            requestID,
-            chatModel: model,
-            source,
-            command,
-            sessionID: this.chatBuilder.sessionID,
-            traceId: span.spanContext().traceId,
-            promptText: inputText,
+            sourceNodeIds,
         })
-        recorder.recordChatQuestionSubmitted(mentions)
+    }
 
-        signal.throwIfAborted()
-
-        this.postEmptyMessageInProgress(model)
-
-        const agent = getAgent(model, manuallySelectedIntent, {
-            contextRetriever: this.contextRetriever,
-            editor: this.editor,
-            chatClient: this.chatClient,
-        })
-
-        this.setFrequentlyUsedContextItemsToStorage(mentions)
-
-        recorder.setIntentInfo({
-            userSpecifiedIntent: manuallySelectedIntent ?? 'chat',
-        })
-
-        this.postEmptyMessageInProgress(model)
-        let messageInProgress: ChatMessage = { speaker: 'assistant', model }
+    private async sendChat({
+        requestID,
+        inputText,
+        mentions,
+        editorState,
+        signal,
+        source,
+        command,
+        manuallySelectedIntent,
+        sourceNodeIds,
+    }: Parameters<typeof this.handleUserMessage>[0]): Promise<void> {
         try {
-            await agent.handle(
-                {
-                    requestID,
-                    inputText,
-                    mentions,
-                    editorState,
-                    signal,
-                    chatBuilder: this.chatBuilder,
-                    span,
-                    recorder,
-                    model,
+            signal.throwIfAborted()
+
+            this.postEmptyMessageInProgress()
+
+            // this.setFrequentlyUsedContextItemsToStorage(mentions)
+
+            this.postEmptyMessageInProgress()
+
+            // const repoName = await getGitRepositoryName();
+
+            // let resolvedRefs: string[] = mentions.map((mention) => mention.uri.fsPath);
+
+            // // Default to the entire codebase if no references are provided.
+            // if (resolvedRefs.length === 0) {
+            //   resolvedRefs = [repoName + '/'];
+            // }
+
+            // The following is pieced together from the Driver `sendChat` pipeline.
+            // The goal is to send the extra context from the sigils to the LLM.
+
+            const actualMentions = mentions.map(m =>
+                m.source ? m : { ...m, source: ContextItemSource.User }
+            )
+
+            const contextResult = await computeContext(
+                requestID,
+                { text: inputText, mentions: actualMentions },
+                editorState,
+                this.editor,
+                this.contextRetriever,
+                signal
+            )
+
+            if (contextResult.error) {
+                this.postError(contextResult.error, 'transcript')
+            }
+            if (contextResult.abort) {
+                throw new Error('aborted')
+            }
+            const corpusContext = contextResult.contextItems ?? []
+            signal.throwIfAborted()
+
+            const { explicitMentions, implicitMentions } = getCategorizedMentions(corpusContext)
+            const prompter = new DefaultPrompter(explicitMentions, implicitMentions)
+
+            const { prompt } = await prompter.makePrompt(this.chatBuilder)
+
+            const actualMessages = sanitizeMessages(prompt)
+
+            // Get all human messages that contain file or symbol context and concatenate them
+            const extraContext = actualMessages
+                .filter((msg): msg is ContextMessage => {
+                    if (msg.speaker !== 'human' || !('file' in msg)) {
+                        return false
+                    }
+                    const file = msg.file as { type?: string }
+                    return file.type === 'file' || file.type === 'symbol'
+                })
+                .map(msg => msg.text?.toString() ?? '')
+                .join('\n\n')
+
+            const pdfRootNodeIds = actualMentions.filter(m => m.type === 'pdf').map(m => m.rootNodeId)
+
+            let actualSourceNodeIds = [...(sourceNodeIds || []), ...pdfRootNodeIds]
+
+            if (actualSourceNodeIds.length === 0) {
+                const rootNodeId = this.chatBuilder.getPrimaryAsset()?.most_recent_version?.root_node.id
+                if (rootNodeId) {
+                    actualSourceNodeIds = [rootNodeId]
+                }
+            }
+
+            const headers = await getAuthHeadersForCurrentConfig()
+
+            const response = await fetch(`${getBaseApiUrl()}/tmp/chat`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...headers,
                 },
-                {
-                    postError: (error: Error, type?: MessageErrorType): void => {
-                        this.postError(error, type)
-                    },
-                    postMessageInProgress: (message: ChatMessage): void => {
-                        messageInProgress = message
-                        this.postViewTranscript(message)
-                    },
-                    postStatuses: (steps: ProcessingStep[]): void => {
+                body: JSON.stringify({
+                    user_prompt: `${inputText.toString()}\n\n${extraContext}`,
+                    llm_session_id: this.llmSessionId,
+                    source_node_ids: actualSourceNodeIds,
+                }),
+                signal,
+            })
+            const reader = response.body?.pipeThrough(new TextDecoderStream()).getReader()
+
+            if (response.status !== 200) {
+                if (response.status === 401) {
+                    const { configuration } = await currentResolvedConfig()
+                    const auth = await resolveAuth(configuration, secretStorage)
+                    await authProvider.validateAndStoreCredentials(auth, 'always-store')
+                }
+
+                let error = ''
+                while (reader && true) {
+                    const { value, done } = await reader.read()
+
+                    if (done) {
+                        break
+                    }
+                    error += value
+                }
+                this.postError(new Error(`HTTP ${response.status} - ${error}`))
+
+                return
+            }
+
+            let contentInProgress = ''
+            let isFinished = false
+            const steps: ProcessingStep[] = []
+            let buffer = '' // Buffer to accumulate partial messages
+
+            const processMessage = (data: any) => {
+                switch (data.kind) {
+                    case 'START_SESSION':
+                        this.chatBuilder.llmSessionId = data.llm_session_id
+                        void this.saveSession()
+                        break
+                    case 'TOOL_STATUS_UPDATE':
+                        steps.push({
+                            type: ProcessType.Tool,
+                            id: steps.length.toString(),
+                            content: data.content,
+                            state: 'pending',
+                        })
                         this.chatBuilder.setLastMessageProcesses(steps)
-                        this.postViewTranscript(messageInProgress)
-                    },
-                    experimentalPostMessageInProgress: (subMessages: SubMessage[]): void => {
-                        messageInProgress.subMessages = subMessages
-                        this.postViewTranscript(messageInProgress)
-                    },
-                    postRequest: (step: ProcessingStep): Promise<boolean> => {
-                        // Generate a unique ID for this confirmation request
-                        const confirmationId = step.id
-
-                        // Send the confirmation request to the webview
-                        this.postMessage({
-                            type: 'action/confirmationRequest',
-                            id: confirmationId,
-                            step,
-                        })
-
-                        // Wait for the webview to respond with the confirmation
-                        const confirmation = new Promise<boolean>(resolve => {
-                            const disposable = this._webviewPanelOrView?.webview.onDidReceiveMessage(
-                                (message: WebviewMessage) => {
-                                    if (
-                                        message.command === 'action/confirmation' &&
-                                        message.id === confirmationId
-                                    ) {
-                                        disposable?.dispose()
-                                        resolve(message.response)
-                                    }
-                                }
-                            )
-                        })
-
-                        // Now that we have the confirmation, proceed based on the user's choice
-
                         this.postViewTranscript({
+                            text: PromptString.unsafe_fromLLMResponse(contentInProgress),
                             speaker: 'assistant',
-                            processes: [step],
-                            model,
                         })
-                        return confirmation
-                    },
-                    postDone: async (op?: { abort: boolean }): Promise<void> => {
-                        // Mark the end of the span for chat.handleUserMessage here, as we do not await
-                        // the entire stream of chat messages being sent to the webview.
-                        // The span is concluded when the stream is complete.
-                        span.end()
-                        if (op?.abort || signal.aborted) {
-                            throw new Error('aborted')
-                        }
-                        // HACK(beyang): This conditional preserves the behavior from when
-                        // all the response generation logic was handled in this method.
-                        // In future work, we should remove this special-casing and unify
-                        // how new messages are posted to the transcript.
-
-                        if (manuallySelectedIntent === 'agentic') {
-                            this.saveSession()
-                        } else if (
-                            messageInProgress &&
-                            (['search', 'insert', 'edit'].includes(messageInProgress?.intent ?? '') ||
-                                messageInProgress?.search ||
-                                messageInProgress?.error)
-                        ) {
-                            this.chatBuilder.addBotMessage(messageInProgress, model)
-                        } else if (
-                            messageInProgress.subMessages &&
-                            messageInProgress.subMessages.length > 0
-                        ) {
-                            this.chatBuilder.addBotMessage(messageInProgress, model)
-                        } else if (messageInProgress?.text) {
+                        break
+                    case 'REFERENCES':
+                        // TODO: Add support for references.
+                        console.log('TODO: references', data)
+                        break
+                    case 'RESPONSE_CHUNK':
+                        contentInProgress += data.content
+                        this.postViewTranscript({
+                            text: PromptString.unsafe_fromLLMResponse(contentInProgress),
+                            speaker: 'assistant',
+                        })
+                        break
+                    case 'END_SESSION':
+                    case 'RESPONSE_FULL':
+                        if (!isFinished) {
                             this.addBotMessage(
                                 requestID,
-                                messageInProgress.text,
-                                messageInProgress.didYouMeanQuery,
-                                model
+                                PromptString.unsafe_fromLLMResponse(data.content)
+                            )
+                            this.postViewTranscript()
+                        }
+                        isFinished = true
+                        break
+                    case 'ERROR':
+                        this.postError(new Error(data.error), 'transcript')
+                        isFinished = true
+                        break
+                    default:
+                        this.postViewTranscript({
+                            text: PromptString.unsafe_fromLLMResponse(`Unknown message kind: ${data}`),
+                            speaker: 'assistant',
+                        })
+                        logError('ChatController:processMessage', 'Unknown message kind:', data)
+                        break
+                }
+            }
+
+            while (reader && true) {
+                const { value, done } = await reader.read()
+
+                if (done) {
+                    break
+                }
+
+                // Add new data to buffer
+                buffer += value
+
+                // Process complete messages from buffer
+                let newlineIndex: number
+                // biome-ignore lint/suspicious/noAssignInExpressions: <explanation>
+                while ((newlineIndex = buffer.indexOf('\n')) !== -1) {
+                    const line = buffer.slice(0, newlineIndex)
+                    buffer = buffer.slice(newlineIndex + 1)
+
+                    if (!line.trim()) {
+                        continue // Skip empty lines
+                    }
+
+                    // Remove the data: prefix and trim
+                    const token = line.trim().substring(6)
+
+                    try {
+                        const data = JSON.parse(token)
+                        processMessage(data)
+                    } catch (error) {
+                        // Only log error if we have a complete line (ends with newline)
+                        if (line.endsWith('\n')) {
+                            logError('ChatController:processMessage', 'Error parsing JSON:', error)
+                            logDebug(
+                                'ChatController:processMessage',
+                                'JSON with Error Token:',
+                                "'",
+                                token,
+                                "'"
+                            )
+                            logDebug(
+                                'ChatController:processMessage',
+                                'JSON with Error Value:',
+                                "'",
+                                value,
+                                "'"
+                            )
+                            logDebug(
+                                'ChatController:processMessage',
+                                'JSON with Error Line:',
+                                "'",
+                                line,
+                                "'"
+                            )
+                            logDebug(
+                                'ChatController:processMessage',
+                                'JSON with Error Buffer:',
+                                "'",
+                                buffer,
+                                "'"
                             )
                         }
-                        this.postViewTranscript()
-                    },
+                        // If we have an error and the line doesn't end with newline,
+                        // it might be a partial message, so we keep it in the buffer
+                    }
                 }
-            )
+            }
+
+            // Process any remaining data in buffer after stream ends
+            if (buffer.trim()) {
+                try {
+                    const token = buffer.trim().substring(6)
+                    const data = JSON.parse(token)
+                    processMessage(data)
+                } catch (error) {
+                    logError('ChatController:processMessage', 'Error parsing final JSON:', error)
+                    logDebug('ChatController:processMessage', 'Final buffer:', buffer)
+                }
+            }
         } catch (error) {
-            // This ensures that the span for chat.handleUserMessage is ended even if the operation fails
-            span.end()
+            logError('ChatController:sendChat', 'Driver AI Chat error:', error)
+
             if (isAbortErrorOrSocketHangUp(error as Error)) {
                 this.postViewTranscript()
                 return
-            }
-            if (isRateLimitError(error) || isContextWindowLimitError(error)) {
-                this.postError(error, 'transcript')
+                // biome-ignore lint/style/noUselessElse: <explanation>
             } else {
                 this.postError(
                     isError(error) ? error : new Error(`Error generating assistant response: ${error}`)
                 )
             }
-            recordErrorToSpan(span, error as Error)
         }
     }
 
-    private async setFrequentlyUsedContextItemsToStorage(mentions: ContextItem[]) {
-        const authStatus = currentAuthStatus()
-        const activeEditor = getEditor().active
+    // private async setFrequentlyUsedContextItemsToStorage(mentions: ContextItem[]) {
+    //     const authStatus = currentAuthStatus()
+    //     const activeEditor = getEditor().active
 
-        const repoName = activeEditor?.document.uri
-            ? (
-                  await firstResultFromOperation(
-                      repoNameResolver.getRepoNamesContainingUri(activeEditor.document.uri)
-                  )
-              ).at(0)
-            : null
+    //     const repoName = activeEditor?.document.uri
+    //         ? (
+    //               await firstResultFromOperation(
+    //                   repoNameResolver.getRepoNamesContainingUri(activeEditor.document.uri)
+    //               )
+    //           ).at(0)
+    //         : null
 
-        if (authStatus.authenticated) {
-            saveFrequentlyUsedContextItems({
-                items: mentions
-                    .filter(item => item.source === ContextItemSource.User)
-                    .map(item => serializeContextItem(item)),
-                authStatus,
-                codebases: repoName ? [repoName] : [],
-            })
-        }
-    }
-    private async getFrequentlyUsedContextItemsFromStorage() {
-        const authStatus = currentAuthStatus()
-        const activeEditor = getEditor().active
+    //     if (authStatus.authenticated) {
+    //         saveFrequentlyUsedContextItems({
+    //             items: mentions
+    //                 .filter(item => item.source === ContextItemSource.User)
+    //                 .map(item => serializeContextItem(item)),
+    //             authStatus,
+    //             codebases: repoName ? [repoName] : [],
+    //         })
+    //     }
+    // }
+    // private async getFrequentlyUsedContextItemsFromStorage() {
+    //     const authStatus = currentAuthStatus()
+    //     const activeEditor = getEditor().active
 
-        const repoName = activeEditor?.document.uri
-            ? (
-                  await firstResultFromOperation(
-                      repoNameResolver.getRepoNamesContainingUri(activeEditor.document.uri)
-                  )
-              ).at(0)
-            : null
+    //     const repoName = activeEditor?.document.uri
+    //         ? (
+    //               await firstResultFromOperation(
+    //                   repoNameResolver.getRepoNamesContainingUri(activeEditor.document.uri)
+    //               )
+    //           ).at(0)
+    //         : null
 
-        if (authStatus.authenticated) {
-            return getFrequentlyUsedContextItems({
-                authStatus,
-                codebases: repoName ? [repoName] : [],
-            })
-        }
+    //     if (authStatus.authenticated) {
+    //         return getFrequentlyUsedContextItems({
+    //             authStatus,
+    //             codebases: repoName ? [repoName] : [],
+    //         })
+    //     }
 
-        return []
-    }
-
-    private async openRemoteFile(uri: vscode.Uri, tryLocal?: boolean) {
-        if (tryLocal) {
-            try {
-                await this.openSourcegraphUriAsLocalFile(uri)
-                return
-            } catch {
-                // Ignore error, just continue to opening the remote file
-            }
-        }
-
-        const sourcegraphSchemaURI = uri.with({
-            query: '',
-            scheme: 'codysourcegraph',
-        })
-
-        // Supported line params examples: L42 (single line) or L42-45 (line range)
-        const lineParam = this.extractLineParamFromURI(uri)
-        const range = this.lineParamToRange(lineParam)
-
-        vscode.workspace.openTextDocument(sourcegraphSchemaURI).then(async doc => {
-            const textEditor = await vscode.window.showTextDocument(doc)
-
-            textEditor.revealRange(range)
-        })
-    }
-
-    /**
-     * Attempts to open a Sourcegraph file URL as a local file in VS Code.
-     * Fails if the URI is not a valid Sourcegraph URL for a file or if the
-     * file does not belong to the current workspace.
-     */
-    private async openSourcegraphUriAsLocalFile(uri: vscode.Uri): Promise<void> {
-        const match = uri.path.match(
-            /^\/*(?<repoName>[^@]*)(?<revision>@.*)?\/-\/blob\/(?<filePath>.*)$/
-        )
-        if (!match || !match.groups) {
-            throw new Error('failed to extract repo name and file path')
-        }
-        const { repoName, filePath } = match.groups
-
-        const workspaceFolder = await workspaceFolderForRepo(repoName)
-        if (!workspaceFolder) {
-            throw new Error('could not find workspace for repo')
-        }
-
-        const lineParam = this.extractLineParamFromURI(uri)
-        const selectionStart = this.lineParamToRange(lineParam).start
-        // Opening the file with an active selection is awkward, so use a zero-length
-        // selection to focus the target line without highlighting anything
-        const selection = new vscode.Range(selectionStart, selectionStart)
-
-        const fileUri = workspaceFolder.uri.with({
-            path: `${workspaceFolder.uri.path}/${filePath}`,
-        })
-        const document = await vscode.workspace.openTextDocument(fileUri)
-        await vscode.window.showTextDocument(document, {
-            selection,
-            preview: true,
-        })
-    }
-
-    private extractLineParamFromURI(uri: vscode.Uri): string | undefined {
-        return uri.query.split('&').find(key => key.match(/^L\d+(?:-\d+)?$/))
-    }
-
-    private lineParamToRange(lineParam?: string | null): vscode.Range {
-        const lines = (lineParam ?? '0')
-            .replace('L', '')
-            .split('-')
-            .map(num => Number.parseInt(num))
-
-        // adding 20 lines to the end of the range to allow the start line to be visible in a more center position on the screen.
-        return new vscode.Range(lines.at(0) || 0, 0, lines.at(1) || (lines.at(0) || 0) + 20, 0)
-    }
+    //     return []
+    // }
 
     private submitOrEditOperation: AbortController | undefined
     public startNewSubmitOrEditOperation(): AbortSignal {
@@ -1149,100 +807,6 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
     private cancelSubmitOrEditOperation(): void {
         this.submitOrEditOperation?.abort()
         this.submitOrEditOperation = undefined
-    }
-
-    private async reevaluateSearchWithSelectedFilters({
-        index,
-        selectedFilters,
-    }: {
-        index?: number
-        selectedFilters?: NLSSearchDynamicFilter[]
-    }) {
-        if (index === undefined || !Array.isArray(selectedFilters)) {
-            return
-        }
-
-        this.handleAbort()
-
-        const humanMessage = this.chatBuilder.getMessages().at(index)
-        const assistantMessage = this.chatBuilder.getMessages().at(index + 1)
-        if (
-            humanMessage?.speaker !== 'human' ||
-            humanMessage.intent !== 'search' ||
-            assistantMessage?.speaker !== 'assistant' ||
-            !assistantMessage?.search?.query
-        ) {
-            return
-        }
-
-        this.chatBuilder.updateAssistantMessageAtIndex(index + 1, {
-            ...assistantMessage,
-            search: {
-                ...assistantMessage.search,
-                selectedFilters,
-            },
-            text: undefined,
-        })
-        this.postViewTranscript()
-
-        try {
-            const query = this.appendSelectedFiltersToSearchQuery({
-                query: assistantMessage.search.query,
-                filters: selectedFilters,
-            })
-
-            const response = await graphqlClient.nlsSearchQuery({ query })
-
-            this.chatBuilder.updateAssistantMessageAtIndex(index + 1, {
-                ...assistantMessage,
-                error: undefined,
-                search: {
-                    ...assistantMessage.search,
-                    queryWithSelectedFilters: query,
-                    response,
-                    selectedFilters,
-                },
-                text: ps`search found ${response?.results.results.length || 0} results`,
-            })
-        } catch (err) {
-            this.chatBuilder.addErrorAsBotMessage(err as Error, ChatBuilder.NO_MODEL)
-        } finally {
-            void this.saveSession()
-            this.postViewTranscript()
-        }
-    }
-
-    private appendSelectedFiltersToSearchQuery({
-        query,
-        filters,
-    }: {
-        query: string
-        filters: NLSSearchDynamicFilter[]
-    }) {
-        if (!filters.length) {
-            return query
-        }
-
-        /* Join all repo filters into a single repo filter */
-        const repoFilters = filters.filter(filter => filter.kind === 'repo')
-        const repoFilter = repoFilters.length
-            ? `repo:^(${repoFilters
-                  .map(filter => filter.value.replace('repo:^', '').replace(/\$$/, ''))
-                  .join('|')})$`
-            : ''
-
-        let count = 50
-        switch (filters.find(filter => filter.kind === 'type')?.value) {
-            case 'type:path':
-            case 'type:repo':
-                count = 20
-                break
-        }
-
-        return `${query} ${filters
-            .filter(f => f.kind !== 'repo')
-            .map(f => f.value)
-            .join(' ')} ${repoFilter} count:${count}`
     }
 
     /**
@@ -1261,6 +825,7 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
         contextFiles,
         editorState,
         manuallySelectedIntent,
+        sourceNodeIds,
     }: {
         requestID: string
         text: PromptString
@@ -1268,15 +833,9 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
         contextFiles: ContextItem[]
         editorState: SerializedPromptEditorState | null
         manuallySelectedIntent?: ChatMessage['intent']
+        sourceNodeIds?: string[] | undefined | null
     }): Promise<void> {
         const abortSignal = this.startNewSubmitOrEditOperation()
-
-        telemetryRecorder.recordEvent('cody.editChatButton', 'clicked', {
-            billingMetadata: {
-                product: 'cody',
-                category: 'billable',
-            },
-        })
 
         try {
             const humanMessage = index ?? this.chatBuilder.getLastSpeakerMessageIndex('human')
@@ -1292,6 +851,7 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
                 signal: abortSignal,
                 source: 'chat',
                 manuallySelectedIntent,
+                sourceNodeIds,
             })
         } catch (error) {
             if (isAbortErrorOrSocketHangUp(error)) {
@@ -1301,86 +861,10 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
         }
     }
 
-    /**
-     * Regenerates a single code block in the transcript.
-     */
-    async handleRegenerateCodeBlock({
-        requestID,
-        code,
-        language,
-        index,
-    }: {
-        requestID: string
-        code: PromptString
-        language: PromptString | undefined
-        index: number
-    }): Promise<void> {
-        const abort = this.startNewSubmitOrEditOperation()
-
-        telemetryRecorder.recordEvent('cody.regenerateCodeBlock', 'clicked', {
-            billingMetadata: {
-                product: 'cody',
-                category: 'billable',
-            },
-        })
-
-        // TODO: Add trace spans around this operation
-
-        try {
-            const model: ChatModel | undefined = await wrapInActiveSpan('chat.resolveModel', () =>
-                firstResultFromOperation(ChatBuilder.resolvedModelForChat(this.chatBuilder), abort)
-            )
-            if (!model) {
-                throw new Error('no chat model selected')
-            }
-            this.postMessage({
-                type: 'clientAction',
-                regenerateStatus: { id: requestID, status: 'regenerating' },
-            })
-            const newCode = await this.regenerateCodeBlock({
-                abort,
-                code,
-                language,
-                model,
-                requestID,
-            })
-            // Paste up the chat transcript replacing `code` with `newCode`
-            if (this.chatBuilder.replaceInMessage(index, code, newCode)) {
-                // Post the updated transcript to the webview
-                this.postViewTranscript()
-                // Save the newly generated code to the transcript.
-                await this.saveSession()
-            }
-            this.postMessage({
-                type: 'clientAction',
-                regenerateStatus: { id: requestID, status: 'done' },
-            })
-        } catch (error) {
-            this.postMessage({
-                type: 'clientAction',
-                regenerateStatus: {
-                    id: requestID,
-                    status: 'error',
-                    error: `${error}`,
-                },
-            })
-            if (isAbortErrorOrSocketHangUp(error)) {
-                return
-            }
-            this.postError(new Error(`Failed to regenerate code: ${error}`), 'system')
-        }
-    }
-
     private handleAbort(): void {
         this.cancelSubmitOrEditOperation()
         // Notify the webview there is no message in progress.
         this.postViewTranscript()
-        telemetryRecorder.recordEvent('cody.sidebar.abortButton', 'clicked', {
-            billingMetadata: {
-                category: 'billable',
-                product: 'cody',
-            },
-        })
     }
 
     public async addContextItemsToLastHumanInput(
@@ -1393,88 +877,9 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
     }
 
     public async handleGetUserEditorContext(uri?: URI): Promise<void> {
-        // Get selection from the active editor
-        const selection = getEditor()?.active?.selection
-
-        // Determine context based on URI presence
-        const contextItem = uri
-            ? await getContextFileFromUri(uri, selection)
-            : await getContextFileFromCursor()
-
-        const { input, context } = await firstResultFromOperation(
-            ChatBuilder.contextWindowForChat(this.chatBuilder)
-        )
-        const userContextSize = context?.user ?? input
-
-        void this.postMessage({
-            type: 'clientAction',
-            addContextItemsToLastHumanInput: contextItem
-                ? [
-                      {
-                          ...contextItem,
-                          type: 'file',
-                          // Remove content to avoid sending large data to the webview
-                          content: undefined,
-                          isTooLarge: contextItem.size ? contextItem.size > userContextSize : undefined,
-                          source: ContextItemSource.Selection,
-                          range: contextItem.range,
-                      } satisfies ContextItem,
-                  ]
-                : [],
-        })
-
         // Reveal the webview panel if it is hidden
         if (this._webviewPanelOrView) {
             revealWebviewViewOrPanel(this._webviewPanelOrView)
-        }
-    }
-
-    public async handleResubmitLastUserInput(): Promise<void> {
-        const lastHumanMessage = this.chatBuilder.getLastHumanMessage()
-        const getLastHumanMessageText = lastHumanMessage?.text?.toString()
-        if (getLastHumanMessageText) {
-            await this.clearAndRestartSession()
-            void this.postMessage({
-                type: 'clientAction',
-                appendTextToLastPromptEditor: getLastHumanMessageText,
-            })
-        }
-    }
-
-    public async handleSmartApplyResult(result: SmartApplyResult): Promise<void> {
-        void this.postMessage({
-            type: 'clientAction',
-            smartApplyResult: result,
-        })
-    }
-
-    public fireClientAction(): void {}
-
-    private async handleAttributionSearch(snippet: string): Promise<void> {
-        try {
-            const attribution = await this.guardrails.searchAttribution(snippet)
-            if (isError(attribution)) {
-                await this.postMessage({
-                    type: 'attribution',
-                    snippet,
-                    error: attribution.message,
-                })
-                return
-            }
-            await this.postMessage({
-                type: 'attribution',
-                snippet,
-                attribution: {
-                    repositoryNames: attribution.repositories.map(r => r.name),
-                    limitHit: attribution.limitHit,
-                },
-            })
-        } catch (error) {
-            await this.postMessage({
-                type: 'attribution',
-                snippet,
-                error: `${error}`,
-            })
         }
     }
 
@@ -1483,8 +888,8 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
     // #region view updaters
     // =======================================================================
 
-    private postEmptyMessageInProgress(model: ChatModel): void {
-        this.postViewTranscript({ speaker: 'assistant', model })
+    private postEmptyMessageInProgress(): void {
+        this.postViewTranscript({ speaker: 'assistant' })
     }
 
     private postViewTranscript(messageInProgress?: ChatMessage): void {
@@ -1500,6 +905,8 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
             messages: messages.map(prepareChatMessage).map(serializeChatMessage),
             isMessageInProgress: !!messageInProgress,
             chatID: this.chatBuilder.sessionID,
+            primaryAsset: this.chatBuilder.getPrimaryAsset(),
+            primaryAssetLoaded: this.chatBuilder.getPrimaryAssetLoaded(),
         })
 
         this.syncPanelTitle()
@@ -1520,89 +927,38 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
         inputText: PromptString,
         signal: AbortSignal
     ): Promise<void> {
-        return tracer.startActiveSpan('chat.setCustomChatTitle', async (span): Promise<void> => {
-            // NOTE: Only generates a custom title if the input text is long enough.
-            // We are asking the LLM to generate a title with about 10 words, so 10 words * 2 chars/word = 20 chars
-            // would be a reasonable threshold to start generating a custom title. This is a heuristic and
-            // can be adjusted as needed.
-            if (inputText.length < 20) {
-                return
-            }
-            // Get the currently available models with speed tag.
-            const speeds = modelsService.getModelsByTag(ModelTag.Speed)
-            // Use the latest Gemini flash model or the first speedy model as the default.
-            const model = (speeds.find(m => m.id.includes('flash-lite')) || speeds?.[0])?.id
-            const messages = this.chatBuilder.getMessages()
-            // Returns early if this is not the first message or if this is a testing session.
-            if (messages.length > 1 || !model || isCodyTesting) {
-                return
-            }
-            const prompt = ps`${getDefaultSystemPrompt()} Your task is to generate a concise title (in about 10 words without quotation) for <codyUserInput>${inputText}</codyUserInput>.
-        RULE: Your response should only contain the concise title and nothing else.`
-            let title = ''
-            try {
-                const stream = await this.chatClient.chat(
-                    [{ speaker: 'human', text: prompt }],
-                    { model, maxTokensToSample: 100 },
-                    signal,
-                    requestID
-                )
-                for await (const message of stream) {
-                    if (message.type === 'change') {
-                        title = message.text
-                    } else if (message.type === 'complete') {
-                        if (title) {
-                            this.chatBuilder.setChatTitle(title)
-                            await this.saveSession()
-                        }
-                        break
-                    }
-                }
-            } catch (error) {
-                logDebug('ChatController', 'setCustomChatTitle', { verbose: error })
-            }
-            telemetryRecorder.recordEvent('cody.chat.customTitle', 'generated', {
-                privateMetadata: {
-                    requestID,
-                    model: model,
-                    traceId: span.spanContext().traceId,
-                },
-                metadata: {
-                    titleLength: title.length,
-                    inputLength: inputText.length,
-                },
-                billingMetadata: {
-                    product: 'cody',
-                    category: 'billable',
-                },
-            })
-        })
+        // Truncate the chat title to 40 characters and add ellipsis if it's longer.
+        const truncatedTitle = inputText.toString().slice(0, 40)
+        this.chatBuilder.setChatTitle(truncatedTitle.length > 40 ? `${truncatedTitle}…` : truncatedTitle)
+
+        // FUTURE: send the prompt to the LLM to generate a title with about 10 words.
+        // See Cody's implementation.
     }
 
     /**
      * Display error message in webview as part of the chat transcript, or as a system banner alongside the chat.
      */
     private postError(error: Error, type?: MessageErrorType): void {
-        if (isRateLimitError(error)) {
-            handleRateLimitError(error as RateLimitError)
-        }
+        // if (isRateLimitError(error)) {
+        //   handleRateLimitError(error as RateLimitError);
+        // }
 
         logDebug('ChatController: postError', error.message)
         // Add error to transcript
         if (type === 'transcript') {
-            this.chatBuilder.addErrorAsBotMessage(error, ChatBuilder.NO_MODEL)
+            this.chatBuilder.addErrorAsBotMessage(error)
             this.postViewTranscript()
             return
         }
 
         void this.postMessage({ type: 'errors', errors: error.message })
-        captureException(error)
+        // captureException(error);
     }
 
     /**
      * Low-level utility to post a message to the webview, pending initialization.
      *
-     * cody-invariant: this.webview.postMessage should never be invoked directly
+     * driver-invariant: this.webview.postMessage should never be invoked directly
      * except within this method.
      */
     private postMessage(message: ExtensionMessage): Thenable<boolean | undefined> {
@@ -1622,42 +978,12 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
     private async addBotMessage(
         requestID: string,
         rawResponse: PromptString,
-        didYouMeanQuery: string | undefined | null,
-        model: ChatModel
+        didYouMeanQuery?: string | undefined | null
     ): Promise<void> {
         const messageText = reformatBotMessageForChat(rawResponse)
-        this.chatBuilder.addBotMessage({ text: messageText, didYouMeanQuery }, model)
+        this.chatBuilder.addBotMessage({ text: messageText, didYouMeanQuery })
         void this.saveSession()
         this.postViewTranscript()
-
-        const authStatus = currentAuthStatus()
-
-        // Count code generated from response
-        const generatedCode = countGeneratedCode(messageText.toString())
-        const responseEventAction = generatedCode.charCount > 0 ? 'hasCode' : 'noCode'
-        telemetryRecorder.recordEvent('cody.chatResponse', responseEventAction, {
-            version: 2, // increment for major changes to this event
-            interactionID: requestID,
-            metadata: {
-                ...generatedCode,
-                // Flag indicating this is a transcript event to go through ML data pipeline. Only for dotcom users
-                // See https://github.com/sourcegraph/sourcegraph/pull/59524
-                recordsPrivateMetadataTranscript: isDotCom(authStatus) ? 1 : 0,
-            },
-            privateMetadata: {
-                // 🚨 SECURITY: chat transcripts are to be included only for DotCom users AND for V2 telemetry
-                // V2 telemetry exports privateMetadata only for DotCom users
-                // the condition below is an aditional safegaurd measure
-                responseText:
-                    isDotCom(authStatus) &&
-                    (await truncatePromptString(messageText, CHAT_OUTPUT_TOKEN_BUDGET)),
-                chatModel: model,
-            },
-            billingMetadata: {
-                product: 'cody',
-                category: 'billable',
-            },
-        })
     }
 
     // #endregion
@@ -1669,6 +995,11 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
     // it when a handle to this specific panel provider is needed.
     public get sessionID(): string {
         return this.chatBuilder.sessionID
+    }
+
+    // Driver LLM Session ID.
+    public get llmSessionId(): string | undefined {
+        return this.chatBuilder.llmSessionId
     }
 
     // Attempts to restore the chat to the given sessionID, if it exists in
@@ -1688,7 +1019,7 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
         const newModel = newChatModelFromSerializedChatTranscript(oldTranscript, undefined)
         this.chatBuilder = newModel
 
-        this.postViewTranscript()
+        this.syncChatBuilderPrimaryAsset(this.chatBuilder.primaryAssetId)
     }
 
     /**
@@ -1719,27 +1050,31 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
         // Assign a new session ID to the duplicated session
         this.chatBuilder = newChatModelFromSerializedChatTranscript(
             transcript,
-            this.chatBuilder.selectedModel,
             new Date(Date.now()).toUTCString()
         )
-        this.postViewTranscript()
+        this.syncChatBuilderPrimaryAsset(this.chatBuilder.primaryAssetId)
         // Move the new session to the editor
-        await vscode.commands.executeCommand('cody.chat.moveToEditor')
+        await vscode.commands.executeCommand('driver-ai.chat.moveToEditor')
         // Restore the old session in the current window
         this.restoreSession(sessionID)
-
-        telemetryRecorder.recordEvent('cody.duplicateSession', 'clicked', {
-            billingMetadata: { product: 'cody', category: 'billable' },
-        })
     }
 
-    public clearAndRestartSession(chatMessages?: ChatMessage[]): void {
+    public async clearAndRestartSession(chatMessages?: ChatMessage[]): Promise<void> {
         this.cancelSubmitOrEditOperation()
-        // Only clear the session if session is not empty.
-        if (!this.chatBuilder?.isEmpty()) {
-            this.chatBuilder = new ChatBuilder(this.chatBuilder.selectedModel, undefined, chatMessages)
-            this.postViewTranscript()
-        }
+
+        // // Only clear the session if session is not empty.
+        // if (!this.chatBuilder?.isEmpty()) {
+        const primaryAssetId = await this.getPrimaryAssetId()
+
+        this.chatBuilder = new ChatBuilder(
+            this.chatBuilder.selectedModel,
+            undefined,
+            undefined,
+            primaryAssetId,
+            chatMessages
+        )
+        this.syncChatBuilderPrimaryAsset(primaryAssetId)
+        // }
     }
 
     // #endregion
@@ -1754,7 +1089,7 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
     }
 
     /**
-     * Creates the webview view or panel for the Cody chat interface if it doesn't already exist.
+     * Creates the webview view or panel for the Driver chat interface if it doesn't already exist.
      */
     public async createWebviewViewOrPanel(
         activePanelViewColumn?: vscode.ViewColumn,
@@ -1766,10 +1101,8 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
             return this.webviewPanelOrView
         }
 
-        const viewType = CodyChatEditorViewType
-        const panelTitle =
-            chatHistory.getChat(currentAuthStatusAuthed(), this.chatBuilder.sessionID)?.chatTitle ||
-            getChatPanelTitle(lastQuestion)
+        const viewType = ChatEditorViewType
+        const panelTitle = 'Chat'
         const viewColumn = activePanelViewColumn || vscode.ViewColumn.Beside
         const webviewPath = vscode.Uri.joinPath(this.extensionUri, 'dist', 'webviews')
         const panel = vscode.window.createWebviewPanel(
@@ -1817,7 +1150,7 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
         viewOrPanel: T
     ): Promise<T> {
         this._webviewPanelOrView = viewOrPanel
-        this.syncPanelTitle()
+        // this.syncPanelTitle();
 
         const webviewPath = vscode.Uri.joinPath(this.extensionUri, 'dist', 'webviews')
         viewOrPanel.webview.options = {
@@ -1826,7 +1159,7 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
             enableCommandUris: true,
         }
 
-        await addWebviewViewHTML(this.extensionClient, this.extensionUri, viewOrPanel)
+        await addWebviewViewHTML(this.extensionUri, viewOrPanel)
 
         // Dispose panel when the panel is closed
         viewOrPanel.onDidDispose(() => {
@@ -1860,7 +1193,7 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
                 {
                     mentionMenuData: query => {
                         return featureFlagProvider
-                            .evaluatedFeatureFlag(FeatureFlag.CodyExperimentalPromptEditor)
+                            .evaluatedFeatureFlag(FeatureFlag.DriverExperimentalPromptEditor)
                             .pipe(
                                 switchMap((experimentalPromptEditor: boolean) =>
                                     getMentionMenuData({
@@ -1874,88 +1207,37 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
                                 )
                             )
                     },
-                    frequentlyUsedContextItems: () => {
-                        return promiseFactoryToObservable(this.getFrequentlyUsedContextItemsFromStorage)
-                    },
-                    clientActionBroadcast: () => this.clientBroadcast,
                     evaluatedFeatureFlag: flag => featureFlagProvider.evaluatedFeatureFlag(flag),
                     hydratePromptMessage: (promptText, initialContext) =>
                         promiseFactoryToObservable(() =>
                             hydratePromptText(promptText, initialContext ?? [])
                         ),
-                    promptsMigrationStatus: () => getPromptsMigrationInfo(),
-                    startPromptsMigration: () => promiseFactoryToObservable(startPromptsMigration),
-                    getCurrentUserId: () =>
-                        promiseFactoryToObservable(signal => getCurrentUserId(signal)),
-                    prompts: input =>
-                        promiseFactoryToObservable(signal =>
-                            mergedPromptsAndLegacyCommands(input, signal)
-                        ),
                     repos: input =>
                         promiseFactoryToObservable(async () => {
-                            const response = await graphqlClient.getRepoList(input)
+                            const response = await getRepoList(input)
 
                             return isError(response) ? [] : response.repositories.nodes
                         }),
-                    promptTags: () => promiseFactoryToObservable(signal => listPromptTags(signal)),
-                    models: () =>
-                        modelsService.modelsChanges.pipe(
-                            map(models => (models === pendingOperation ? null : models))
-                        ),
-                    chatModels: () =>
-                        modelsService.getModels(ModelUsage.Chat).pipe(
-                            startWith([]),
-                            map(models => (models === pendingOperation ? [] : models))
-                        ),
-                    highlights: parameters =>
-                        promiseFactoryToObservable(() =>
-                            graphqlClient.getHighlightedFileChunk(parameters)
-                        ).pipe(
-                            map(result => {
-                                if (isError(result)) {
-                                    return []
-                                }
+                    getTree: input =>
+                        promiseFactoryToObservable(async () => {
+                            try {
+                                const tree = await getTree(input)
 
-                                return result
-                            })
-                        ),
-                    setChatModel: model => {
-                        // Because this was a user action to change the model we will set that
-                        // as a global default for chat
-                        return promiseFactoryToObservable(async () => {
-                            this.chatBuilder.setSelectedModel(model)
-                            await modelsService.setSelectedModel(ModelUsage.Chat, model)
-                        })
-                    },
+                                return tree ?? []
+                            } catch (error) {
+                                logError('ChatController: getTree', 'Error getting tree:', error)
+                                return []
+                            }
+                        }),
                     defaultContext: () => defaultContext.pipe(skipPendingOperation()),
                     resolvedConfig: () => resolvedConfig,
                     authStatus: () => authStatus,
                     transcript: () =>
                         this.chatBuilder.changes.pipe(map(chat => chat.getDehydratedMessages())),
-                    userHistory: type =>
-                        type === ChatHistoryType.Full
+                    userHistory: (type: ChatHistoryType) => {
+                        return type === ChatHistoryType.Full
                             ? chatHistory.changes
-                            : chatHistory.lightweightChanges,
-                    userProductSubscription: () =>
-                        userProductSubscription.pipe(
-                            map(value => (value === pendingOperation ? null : value))
-                        ),
-                    // Existing tools endpoint - update to include MCP tools
-                    mcpSettings: () => {
-                        return featureFlagProvider
-                            .evaluatedFeatureFlag(FeatureFlag.AgenticChatWithMCP)
-                            .pipe(
-                                distinctUntilChanged(),
-                                startWith(null),
-                                // When disabled, return null
-                                switchMap(experimentalAgentMode => {
-                                    if (!experimentalAgentMode) {
-                                        return Observable.of(null as McpServer[] | null)
-                                    }
-                                    // When enabled, get servers from the manager
-                                    return MCPManager.observable
-                                })
-                            )
+                            : chatHistory.lightweightChanges
                     },
                 }
             )
@@ -1991,6 +1273,23 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
     public isVisible(): boolean {
         return this.webviewPanelOrView?.visible ?? false
     }
+
+    private async syncChatBuilderPrimaryAsset(primaryAssetId?: string): Promise<void> {
+        if (primaryAssetId) {
+            const response = await getPrimaryAsset({
+                id: primaryAssetId,
+                limit: 1,
+                offset: 0,
+                kind: [PrimaryAsset.CODEBASE],
+            })
+            const primaryAsset = response.results[0]
+            this.chatBuilder.setPrimaryAsset(primaryAsset)
+        } else {
+            this.chatBuilder.setPrimaryAsset(undefined)
+        }
+
+        this.postViewTranscript()
+    }
 }
 
 function newChatModelFromSerializedChatTranscript(
@@ -1999,8 +1298,10 @@ function newChatModelFromSerializedChatTranscript(
     newSessionID?: string
 ): ChatBuilder {
     return new ChatBuilder(
-        migrateAndNotifyForOutdatedModels(modelID ?? null) ?? undefined,
+        modelID,
         newSessionID ?? json.id,
+        json.llmSessionId,
+        json.primaryAssetId,
         json.interactions.flatMap((interaction: SerializedChatInteraction): ChatMessage[] =>
             [
                 PromptString.unsafe_deserializeChatMessage(interaction.humanMessage),
@@ -2053,14 +1354,9 @@ export function revealWebviewViewOrPanel(viewOrPanel: vscode.WebviewView | vscod
  * Set HTML for webview (panel) & webview view (sidebar)
  */
 async function addWebviewViewHTML(
-    extensionClient: Pick<ExtensionClient, 'capabilities'>,
     extensionUri: vscode.Uri,
     view: vscode.WebviewView | vscode.WebviewPanel
 ): Promise<void> {
-    if (extensionClient.capabilities?.webview === 'agentic') {
-        return
-    }
-    const config = extensionClient.capabilities?.webviewNativeConfig
     const webviewPath = vscode.Uri.joinPath(extensionUri, 'dist', 'webviews')
     const root = vscode.Uri.joinPath(webviewPath, 'index.html')
     const bytes = await vscode.workspace.fs.readFile(root)
@@ -2068,11 +1364,9 @@ async function addWebviewViewHTML(
 
     view.webview.html = manipulateWebviewHTML(html, {
         cspSource: view.webview.cspSource,
-        resources: config?.skipResourceRelativization
-            ? undefined
-            : view.webview.asWebviewUri(webviewPath),
-        injectScript: config?.injectScript ?? undefined,
-        injectStyle: config?.injectStyle ?? undefined,
+        resources: view.webview.asWebviewUri(webviewPath),
+        // injectScript: config?.injectScript ?? undefined,
+        // injectStyle: config?.injectStyle ?? undefined,
     })
 }
 
@@ -2102,4 +1396,101 @@ export function manipulateWebviewHTML(html: string, options: TransformHTMLOption
     }
 
     return html
+}
+
+async function computeContext(
+    _requestID: string,
+    { text, mentions }: HumanInput,
+    editorState: SerializedPromptEditorState | null,
+    editor: ChatControllerOptions['editor'],
+    contextRetriever: Pick<ContextRetriever, 'retrieveContext'>,
+    signal?: AbortSignal,
+    skipQueryRewrite = false
+): Promise<{
+    contextItems?: ContextItem[]
+    error?: Error
+    abort?: boolean
+}> {
+    try {
+        return wrapInActiveSpan('chat.computeContext', async span => {
+            const contextAlternatives = await computeContextAlternatives(
+                contextRetriever,
+                editor,
+                { text, mentions },
+                editorState,
+                span,
+                signal,
+                skipQueryRewrite
+            )
+            return { contextItems: contextAlternatives[0].items }
+        })
+    } catch (e) {
+        return { error: new Error(`Unexpected error computing context, no context was used: ${e}`) }
+    }
+}
+
+async function computeContextAlternatives(
+    contextRetriever: Pick<ContextRetriever, 'retrieveContext'>,
+    editor: ChatControllerOptions['editor'],
+    { text, mentions }: HumanInput,
+    editorState: SerializedPromptEditorState | null,
+    span: Span,
+    signal?: AbortSignal,
+    skipQueryRewrite = false
+): Promise<RankedContext[]> {
+    // Remove context chips (repo, @-mentions) from the input text for context retrieval.
+    const inputTextWithoutContextChips = editorState
+        ? PromptString.unsafe_fromUserQuery(
+              inputTextWithoutContextChipsFromPromptEditorState(editorState)
+          )
+        : text
+    const structuredMentions = toStructuredMentions(mentions)
+    const retrievedContextPromise = contextRetriever.retrieveContext(
+        structuredMentions,
+        inputTextWithoutContextChips,
+        span,
+        signal,
+        skipQueryRewrite
+    )
+    const openCtxContextPromise = getContextForChatMessage(text.toString(), signal)
+    const [retrievedContext, openCtxContext] = await Promise.all([
+        retrievedContextPromise.catch((e: any) => {
+            throw new Error(`Failed to retrieve search context: ${e}`)
+        }),
+        openCtxContextPromise,
+    ])
+
+    const resolvedExplicitMentionsPromise = resolveContextItems(
+        editor,
+        [
+            structuredMentions.symbols,
+            structuredMentions.files,
+            structuredMentions.openCtx,
+            structuredMentions.mediaFiles,
+        ].flat(),
+        text,
+        signal
+    )
+
+    return [
+        {
+            strategy: 'local+remote',
+            items: combineContext(
+                await resolvedExplicitMentionsPromise,
+                openCtxContext,
+                retrievedContext
+            ),
+        },
+    ]
+}
+
+// This is the manual ordering of the different retrieved and explicit context sources
+// It should be equivalent to the ordering of things in
+// ChatController:legacyComputeContext > context.ts:resolveContext
+function combineContext(
+    explicitMentions: ContextItem[],
+    openCtxContext: ContextItemOpenCtx[],
+    retrievedContext: ContextItem[]
+): ContextItem[] {
+    return [explicitMentions, openCtxContext, retrievedContext].flat()
 }

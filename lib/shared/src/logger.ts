@@ -1,26 +1,27 @@
+// cspell:ignore cenv
 // IMPORTANT: This file MUST have minimal imports because we need to be able to
 // use these loggers everywhere, including during early initialization of the
 // process. Be very conservative about adding imports to modules that perform
 // any kind of side effect.
-
 import { cenv } from './configuration/environment'
 
 /**
  * Interface that mirrors the `logDebug` and `logError` functions in
- * vscode/src/log.ts but is available inside @sourcegraph/cody-shared.
+ * vscode/src/log.ts but is available inside @sourcegraph/driver-shared.
  *
  * We should replace all usages of `console.{log,error,warn}` with calls to
  * these loggers instead. One motivation to do this is to expose more control to
- * all Cody clients over how messages get logged. For example, the JetBrains
+ * all Driver clients over how messages get logged. For example, the JetBrains
  * plugin may want to display warnings/errors in a custom way.
  */
-interface CodyLogger {
+interface DriverLogger {
     logDebug(filterLabel: string, text: string, ...args: unknown[]): void
     logError(filterLabel: string, text: string, ...args: unknown[]): void
 }
 
-const consoleLogger: CodyLogger = {
+const consoleLogger: DriverLogger = {
     logDebug(filterLabel, text, ...args) {
+        // eslint-disable-next-line no-console
         console.log(`${filterLabel}: ${text}`, ...args)
     },
     logError(filterLabel, text, ...args) {
@@ -28,14 +29,14 @@ const consoleLogger: CodyLogger = {
     },
 }
 
-const noopLogger: CodyLogger = {
+const noopLogger: DriverLogger = {
     logDebug() {},
     logError() {},
 }
 
 // Disable logger in vitest tests by default to unclutter CI output.
-let _logger = cenv.CODY_DEFAULT_LOGGER_DISABLE ? noopLogger : consoleLogger
-export function setLogger(newLogger: CodyLogger): void {
+let _logger = cenv.DRIVER_DEFAULT_LOGGER_DISABLE ? noopLogger : consoleLogger
+export function setLogger(newLogger: DriverLogger): void {
     _logger = newLogger
 }
 

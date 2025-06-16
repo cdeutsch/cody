@@ -1,8 +1,8 @@
+// cspell:ignore autocompletions Yubi
+import { AxiosError } from 'axios'
 import { differenceInDays, format, formatDistanceStrict, formatRelative } from 'date-fns'
 
 import { isError } from '../utils'
-
-import type { BrowserOrNodeResponse } from './graphql/client'
 
 function formatRetryAfterDate(retryAfterDate: Date): string {
     const now = new Date()
@@ -72,7 +72,8 @@ export class NetworkError extends Error {
     public readonly status: number
 
     constructor(
-        response: Pick<BrowserOrNodeResponse, 'url' | 'status' | 'statusText'>,
+        // response: Pick<BrowserOrNodeResponse, 'url' | 'status' | 'statusText'>,
+        response: { url: string; status: number; statusText: string },
         content: string,
         public traceId: string | undefined
     ) {
@@ -87,10 +88,11 @@ export function isNetworkError(error: Error): error is NetworkError {
     return error instanceof NetworkError
 }
 
-export function isAuthError(error: unknown): error is AuthError | NetworkError {
+export function isAuthError(error: unknown): error is AuthError | NetworkError | AxiosError {
     return (
         (error instanceof NetworkError && (error.status === 401 || error.status === 403)) ||
-        error instanceof AuthError
+        error instanceof AuthError ||
+        (error instanceof AxiosError && error.response?.status === 401)
     )
 }
 
@@ -157,7 +159,7 @@ export class AuthError extends Error {
  */
 export class AvailabilityError extends AuthError {
     constructor() {
-        super('Network Error', 'Sourcegraph is unreachable')
+        super('Network Error', 'Driver is unreachable')
         this.showTryAgain = true
     }
 }
@@ -175,7 +177,7 @@ export class EnterpriseUserDotComError extends AuthError {
             'Based on your email address we think you may be an employee of ' +
                 `${enterprise}. To get access to all your features please sign ` +
                 "in through your organization's enterprise instance instead. If you need assistance " +
-                'please contact your Sourcegraph admin.'
+                'please contact your Driver admin.'
         )
     }
 }
@@ -203,7 +205,7 @@ export class NeedsAuthChallengeError extends AuthError {
         // consult the customers mentioned in that issue.
         super(
             'Tap Your YubiKey to Authenticate',
-            `Your device's authentication expired and must be renewed to access Sourcegraph on your organization's network.`
+            `Your device's authentication expired and must be renewed to access Driver on your organization's network.`
         )
     }
 }

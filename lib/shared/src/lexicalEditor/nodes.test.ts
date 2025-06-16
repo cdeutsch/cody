@@ -200,7 +200,7 @@ describe('getMentionOperations', () => {
         expect(result.create).toEqual([update])
     })
 
-    test('adding a submention of an existing item is a no-op', () => {
+    test('adding a sub mention of an existing item is a no-op', () => {
         const existing: SerializedContextItem = {
             uri: 'file1.ts',
             type: 'file',

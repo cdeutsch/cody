@@ -9,7 +9,7 @@ import type {
     Range as VSCodeRange,
 } from 'vscode'
 
-import { type ClientConfiguration, OLLAMA_DEFAULT_URL } from '@sourcegraph/cody-shared'
+import type { ClientConfiguration } from '@sourcegraph/cody-shared'
 
 import path from 'node:path'
 import { AgentEventEmitter as EventEmitter } from './AgentEventEmitter'
@@ -900,58 +900,11 @@ export const vsCodeMocks = {
 } as const
 
 export const DEFAULT_VSCODE_SETTINGS = {
-    net: {
-        mode: undefined,
-        proxy: {
-            cacert: undefined,
-            endpoint: undefined,
-            skipCertValidation: false,
-        },
-        vscode: '{}',
-    },
-    codebase: '',
-    serverEndpoint: undefined,
-    customHeaders: undefined,
-    autocomplete: true,
-    autocompleteLanguages: {
-        '*': true,
-    },
-    commandCodeLenses: false,
-    experimentalSupercompletions: false,
-    experimentalAutoEditEnabled: false,
-    experimentalAutoEditRendererTesting: false,
-    experimentalAutoEditConfigOverride: undefined,
-    experimentalMinionAnthropicKey: undefined,
-    experimentalTracing: false,
-    experimentalNoodle: false,
-    experimentalNoxideEnabled: true,
     codeActions: true,
-    commandHints: false,
-    isRunningInsideAgent: false,
     agentIDE: undefined,
-    agentHasPersistentStorage: false,
     hasNativeWebview: true,
     debugVerbose: false,
-    debugFilter: null,
-    telemetryLevel: 'all',
-    internalUnstable: false,
-    internalDebugContext: false,
-    internalDebugState: false,
     agenticContextExperimentalOptions: {},
-    autocompleteAdvancedProvider: 'default',
-    autocompleteAdvancedModel: null,
-    autocompleteCompleteSuggestWidgetSelection: true,
-    autocompleteFormatOnAccept: true,
-    autocompleteDisableInsideComments: false,
-    autocompleteExperimentalGraphContext: null,
-    autocompleteExperimentalOllamaOptions: {
-        model: 'codellama:7b-code',
-        url: OLLAMA_DEFAULT_URL,
-    },
-    autocompleteFirstCompletionTimeout: 3500,
-    experimentalGuardrailsTimeoutSeconds: undefined,
     overrideAuthToken: undefined,
-    overrideServerEndpoint: undefined,
-    authExternalProviders: [],
-    rulesEnabled: false,
+    baseUrl: 'https://api.us1.driverai.com',
 } satisfies ClientConfiguration

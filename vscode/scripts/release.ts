@@ -40,13 +40,13 @@ enum ReleaseType {
     // sourcegraph.cody-testing - Pre-release channel
     Nightly = 'nightly',
 }
-const releaseType = process.env.CODY_RELEASE_TYPE
+const releaseType = process.env.DRIVER_RELEASE_TYPE
 function validateReleaseType(releaseType: string | undefined): asserts releaseType is ReleaseType {
     if (!releaseType || !Object.values(ReleaseType).includes(releaseType as ReleaseType)) {
         console.error(
             `Invalid release type ${JSON.stringify(releaseType)}. Valid values are: ${JSON.stringify(
                 Object.values(ReleaseType)
-            )}. Specify a a release type in the CODY_RELEASE_TYPE env var.`
+            )}. Specify a a release type in the DRIVER_RELEASE_TYPE env var.`
         )
         process.exit(1)
     }
@@ -63,8 +63,8 @@ function updatePackageForTestingExtension(): void {
 }
 updatePackageForTestingExtension()
 
-const dryRun = Boolean(process.env.CODY_RELEASE_DRY_RUN)
-const customDefaultSettingsFile = process.env.CODY_RELEASE_CUSTOM_DEFAULT_SETTINGS_FILE
+const dryRun = Boolean(process.env.DRIVER_RELEASE_DRY_RUN)
+const customDefaultSettingsFile = process.env.DRIVER_RELEASE_CUSTOM_DEFAULT_SETTINGS_FILE
 if (customDefaultSettingsFile) {
     // Override settings defaults in this build from a provided settings file.
     // The settings file is expected to contain JSON of an object with settings

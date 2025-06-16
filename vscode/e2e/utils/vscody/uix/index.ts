@@ -9,8 +9,6 @@ export * as vscode from './vscode'
 export * as workspace from './workspace'
 export * as snapshot from './snapshot'
 export * as mitm from './mitm'
-// biome-ignore lint/nursery/noRestrictedImports: false positive
-export * as telemetry from './telemetry'
 import { expect as snapshotExpects } from './snapshot'
 
 export const expect = baseExpect.extend({

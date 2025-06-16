@@ -2,7 +2,7 @@ import type { ContextItem, RangeData } from '@sourcegraph/cody-shared'
 import { getContextItemDisplayPath, isUserAddedItem } from './utils'
 
 /**
- * Filters exisiting context items for uniqueness.
+ * Filters existing context items for uniqueness.
  *
  * NOTE: The transcript is reversed during the prompt-building process to ensure
  * that the most recent items are considered first. Therefore, the `reversedItems`

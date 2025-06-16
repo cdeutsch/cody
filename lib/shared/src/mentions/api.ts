@@ -1,12 +1,5 @@
 import type { MetaResult } from '@openctx/client'
-import { type Observable, map } from 'observable-fns'
-import {
-    GIT_OPENCTX_PROVIDER_URI,
-    REMOTE_REPOSITORY_PROVIDER_URI,
-    WEB_PROVIDER_URI,
-    openctxController,
-} from '../context/openctx/api'
-import { distinctUntilChanged, switchMap } from '../misc/observable'
+import { Observable } from 'observable-fns'
 
 /**
  * Props required by context item providers to return possible context items.
@@ -56,17 +49,22 @@ export const SYMBOL_CONTEXT_MENTION_PROVIDER: ContextMentionProviderMetadata & {
     emptyLabel: 'No symbols found',
 }
 
+export const PDF_CONTEXT_MENTION_PROVIDER: ContextMentionProviderMetadata & { id: 'pdf' } = {
+    id: 'pdf',
+    title: 'PDFs',
+    queryLabel: 'Search for a PDF to include...',
+    emptyLabel: 'No PDFs found',
+}
+
 /**
  * Default order for context mention providers.
  * Providers will be sorted based on their position in this array.
  * Providers not in this list will be placed at the end.
  */
 export const DEFAULT_PROVIDER_ORDER: ContextMentionProviderID[] = [
-    REMOTE_REPOSITORY_PROVIDER_URI,
     FILE_CONTEXT_MENTION_PROVIDER.id,
+    PDF_CONTEXT_MENTION_PROVIDER.id,
     SYMBOL_CONTEXT_MENTION_PROVIDER.id,
-    WEB_PROVIDER_URI,
-    GIT_OPENCTX_PROVIDER_URI,
 ]
 
 export function mentionProvidersMetadata(options?: {
@@ -74,8 +72,12 @@ export function mentionProvidersMetadata(options?: {
     experimentalPromptEditor?: boolean
     disableProviders: ContextMentionProviderID[]
 }): Observable<ContextMentionProviderMetadata[]> {
-    return openCtxMentionProviders().map(providers =>
-        [...[FILE_CONTEXT_MENTION_PROVIDER, SYMBOL_CONTEXT_MENTION_PROVIDER], ...providers]
+    return new Observable<ContextMentionProviderMetadata[]>(subscriber => {
+        const providers = [
+            FILE_CONTEXT_MENTION_PROVIDER,
+            SYMBOL_CONTEXT_MENTION_PROVIDER,
+            PDF_CONTEXT_MENTION_PROVIDER,
+        ]
             .filter(provider => {
                 // Filter out providers that have been explicitly disabled
                 if (options?.disableProviders?.includes(provider.id)) {
@@ -119,7 +121,10 @@ export function mentionProvidersMetadata(options?: {
                 // are sorted alphabetically by title
                 return a.title.localeCompare(b.title)
             })
-    )
+
+        subscriber.next(providers)
+        subscriber.complete()
+    })
 }
 
 export function openCtxProviderMetadata(
@@ -131,20 +136,4 @@ export function openCtxProviderMetadata(
         queryLabel: meta.mentions?.label ?? 'Search...',
         emptyLabel: 'No results',
     }
-}
-
-function openCtxMentionProviders(): Observable<ContextMentionProviderMetadata[]> {
-    return openctxController.pipe(
-        switchMap(c =>
-            c.metaChanges({}, {}).pipe(
-                map(providers =>
-                    providers
-                        .filter(provider => !!provider.mentions)
-                        .map(openCtxProviderMetadata)
-                        .sort((a, b) => (a.title > b.title ? 1 : -1))
-                ),
-                distinctUntilChanged()
-            )
-        )
-    )
 }

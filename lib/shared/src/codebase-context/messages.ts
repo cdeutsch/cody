@@ -1,10 +1,11 @@
+// cspell:ignore symf
 import type { URI } from 'vscode-uri'
 
 import type { UIToolStatus } from '../chat/types'
 import type { RangeData } from '../common/range'
 import type { Message } from '../sourcegraph-api'
 import type { MessagePart } from '../sourcegraph-api/completions/types'
-import type { Range } from '../sourcegraph-api/graphql/client'
+import type { Range } from '../sourcegraph-api/graphql/client-types'
 
 export type ContextFileType = 'file' | 'symbol'
 
@@ -56,7 +57,7 @@ interface ContextItemCommon {
     size?: number
 
     /**
-     * Whether the item is excluded by Cody Ignore.
+     * Whether the item is excluded by Driver Ignore.
      */
     isIgnored?: boolean
 
@@ -66,7 +67,7 @@ interface ContextItemCommon {
     isTooLarge?: boolean
 
     /**
-     * If isTooLarage is true, the reason why the file was deemed too long to be included in the context.
+     * If isTooLarge is true, the reason why the file was deemed too long to be included in the context.
      */
     isTooLargeReason?: string
 
@@ -83,7 +84,7 @@ interface ContextItemCommon {
 
     /**
      * Optional metadata about where this context item came from or how it was scored, which
-     * can help a user or dev working on Cody understand why this item is appearing in context.
+     * can help a user or dev working on Driver understand why this item is appearing in context.
      */
     metadata?: string[]
 
@@ -133,6 +134,7 @@ export enum ContextItemSource {
  */
 export type ContextItem =
     | ContextItemFile
+    | ContextItemPdf
     | ContextItemRepository
     | ContextItemTree
     | ContextItemSymbol
@@ -243,6 +245,12 @@ export interface ContextItemFile extends ContextItemCommon {
     remoteRepositoryName?: string
 
     ranges?: Range[]
+}
+
+export interface ContextItemPdf extends ContextItemCommon {
+    type: 'pdf'
+
+    rootNodeId: string
 }
 
 /**

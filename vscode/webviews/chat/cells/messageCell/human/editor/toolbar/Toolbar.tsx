@@ -1,31 +1,25 @@
-import type { WebviewToExtensionAPI } from '@sourcegraph/cody-shared'
-import {
-    type Action,
-    type ChatMessage,
-    type ContextItemMedia,
-    type Model,
-    ModelTag,
-    isMacOS,
+import type {
+    ChatMessage,
+    ContextItemMedia,
+    PrimaryAssetRecord,
+    WebviewToExtensionAPI,
 } from '@sourcegraph/cody-shared'
+import { isMacOS } from '@sourcegraph/cody-shared'
 import clsx from 'clsx'
+import { LoaderCircleIcon, SlidersHorizontalIcon, TriangleAlertIcon } from 'lucide-react'
 import { type FunctionComponent, useCallback, useEffect, useMemo, useRef } from 'react'
-import type { UserAccountInfo } from '../../../../../../Chat'
-import { ModelSelectField } from '../../../../../../components/modelSelectField/ModelSelectField'
-import { PromptSelectField } from '../../../../../../components/promptSelectField/PromptSelectField'
+import { ToolbarPopoverItem } from '../../../../../../components/shadcn/ui/toolbar'
 import toolbarStyles from '../../../../../../components/shadcn/ui/toolbar.module.css'
-import { useActionSelect } from '../../../../../../prompts/promptUtils'
-import { useClientConfig } from '../../../../../../utils/useClientConfig'
+import { cn } from '../../../../../../components/shadcn/utils'
+import { DriverTuner } from '../../../../../../webapp-frontend/components/UserDefinedScope/DriverTuner'
+import { mapToSourceAssetRecord } from '../../../../../../webapp-frontend/components/UserDefinedScope/SourceAssetRecord'
 import { MediaUploadButton } from './MediaUploadButton'
-import { ModeSelectorField } from './ModeSelectorButton'
 import { SubmitButton, type SubmitButtonState } from './SubmitButton'
 
 /**
  * The toolbar for the human message editor.
  */
 export const Toolbar: FunctionComponent<{
-    models: Model[]
-    userInfo: UserAccountInfo
-
     isEditorFocused: boolean
 
     onSubmitClick: (intent?: ChatMessage['intent']) => void
@@ -46,9 +40,15 @@ export const Toolbar: FunctionComponent<{
     omniBoxEnabled: boolean
     onMediaUpload?: (mediaContextItem: ContextItemMedia) => void
 
-    setLastManuallySelectedIntent: (intent: ChatMessage['intent']) => void
+    setLastManuallySelectedIntent?: (intent: ChatMessage['intent']) => void
+
+    primaryAsset?: PrimaryAssetRecord
+    primaryAssetLoaded?: boolean
+
+    handleTunerSubmit: (sourceNodeIds: string[]) => void
+    sourceNodeIds?: string[]
+    onTunerOpenChange?: (open: boolean) => void
 }> = ({
-    userInfo,
     isEditorFocused,
     onSubmitClick,
     submitState,
@@ -56,12 +56,16 @@ export const Toolbar: FunctionComponent<{
     focusEditor,
     hidden,
     className,
-    models,
     intent,
     extensionAPI,
     omniBoxEnabled,
     onMediaUpload,
     setLastManuallySelectedIntent,
+    primaryAsset,
+    primaryAssetLoaded,
+    handleTunerSubmit,
+    sourceNodeIds,
+    onTunerOpenChange,
 }) => {
     /**
      * If the user clicks in a gap or on the toolbar outside of any of its buttons, report back to
@@ -79,17 +83,7 @@ export const Toolbar: FunctionComponent<{
         [onGapClick]
     )
 
-    /**
-     * Image upload is enabled if the user is not on Sourcegraph.com,
-     * or is using a BYOK model with vision tag.
-     */
-    const isImageUploadEnabled = useMemo(() => {
-        const isDotCom = userInfo?.isDotComUser
-        const selectedModel = models?.[0]
-        const isBYOK = selectedModel?.tags?.includes(ModelTag.BYOK)
-        const isVision = selectedModel?.tags?.includes(ModelTag.Vision)
-        return (!isDotCom || isBYOK) && isVision
-    }, [userInfo?.isDotComUser, models?.[0]])
+    const isImageUploadEnabled = false
 
     const modelSelectorRef = useRef<{ open: () => void; close: () => void } | null>(null)
     const promptSelectorRef = useRef<{ open: () => void; close: () => void } | null>(null)
@@ -119,12 +113,24 @@ export const Toolbar: FunctionComponent<{
         return () => window.removeEventListener('keydown', handleKeyboardShortcuts)
     }, [])
 
-    if (models?.length < 2) {
-        return null
-    }
+    // if (models?.length < 2) {
+    //   return null;
+    // }
+
+    const isTuned = sourceNodeIds?.length && sourceNodeIds.length > 0
+    const tunerItem = useMemo(() => {
+        if (!primaryAsset) {
+            return undefined
+        }
+        const item = mapToSourceAssetRecord(primaryAsset)
+        item.children = sourceNodeIds
+
+        return item
+    }, [primaryAsset, sourceNodeIds])
 
     return (
         <menu
+            // eslint-disable-next-line jsx-a11y/no-noninteractive-element-to-interactive-role
             role="toolbar"
             aria-hidden={hidden}
             hidden={hidden}
@@ -146,108 +152,56 @@ export const Toolbar: FunctionComponent<{
                         className={`tw-opacity-60 focus-visible:tw-opacity-100 hover:tw-opacity-100 tw-mr-2 tw-gap-0.5 ${toolbarStyles.button} ${toolbarStyles.buttonSmallIcon}`}
                     />
                 )}
-                <PromptSelectFieldToolbarItem
-                    focusEditor={focusEditor}
-                    className="tw-ml-1 tw-mr-1"
-                    promptSelectorRef={promptSelectorRef}
-                />
-                <ModeSelectorField
-                    className={className}
-                    omniBoxEnabled={omniBoxEnabled}
-                    _intent={intent}
-                    isDotComUser={userInfo?.isDotComUser}
-                    isCodyProUser={userInfo?.isCodyProUser}
-                    manuallySelectIntent={setLastManuallySelectedIntent}
-                />
-                <ModelSelectFieldToolbarItem
-                    models={models}
-                    userInfo={userInfo}
-                    focusEditor={focusEditor}
-                    modelSelectorRef={modelSelectorRef}
-                    className="tw-mr-1"
-                    extensionAPI={extensionAPI}
-                    intent={intent}
-                />
+                <ToolbarPopoverItem
+                    role="menu"
+                    iconEnd={null}
+                    className={cn(
+                        'tw-justify-between',
+                        className,
+                        isTuned
+                            ? 'tw-bg-status-bar-item-remote-background tw-text-status-bar-item-remote-foreground'
+                            : 'tw-bg-inherit'
+                    )}
+                    aria-label="Tuning Menu Button"
+                    disabled={!primaryAsset}
+                    popoverContent={close => (
+                        <DriverTuner
+                            setTunerOpen={close}
+                            tunerItem={tunerItem}
+                            handleAddAsset={() => {}}
+                            handleRemoveAsset={() => {}}
+                            handleTunerSubmit={handleTunerSubmit}
+                        />
+                    )}
+                    popoverRootProps={{ onOpenChange: onTunerOpenChange }}
+                    popoverContentProps={{
+                        className: '!tw-p-2 tw-mr-6',
+                        // onKeyDown: onKeyDown,
+                        onCloseAutoFocus: event => {
+                            event.preventDefault()
+                        },
+                    }}
+                >
+                    {primaryAsset ? (
+                        <>
+                            <SlidersHorizontalIcon className="tw-mr-1 !tw-size-6" />
+                            {isTuned ? 'Tuned' : 'Tune'}
+                        </>
+                    ) : primaryAssetLoaded ? (
+                        <>
+                            <TriangleAlertIcon className="!tw-size-6" /> Codebase not found in Driver
+                        </>
+                    ) : (
+                        <>
+                            <LoaderCircleIcon className="!tw-size-6 tw-animate-spin" /> Loading
+                            codebase...
+                        </>
+                    )}
+                </ToolbarPopoverItem>
             </div>
             <div className="tw-flex-1 tw-flex tw-justify-end">
                 <SubmitButton onClick={onSubmitClick} state={submitState} />
             </div>
         </menu>
-    )
-}
-
-const PromptSelectFieldToolbarItem: FunctionComponent<{
-    focusEditor?: () => void
-    className?: string
-    promptSelectorRef?: React.MutableRefObject<{ open: () => void; close: () => void } | null>
-}> = ({ focusEditor, className, promptSelectorRef }) => {
-    const runAction = useActionSelect()
-
-    const onSelect = useCallback(
-        async (item: Action) => {
-            await runAction(item, () => {})
-            focusEditor?.()
-        },
-        [focusEditor, runAction]
-    )
-
-    return (
-        <PromptSelectField
-            onSelect={onSelect}
-            onCloseByEscape={focusEditor}
-            className={className}
-            promptSelectorRef={promptSelectorRef}
-        />
-    )
-}
-
-const ModelSelectFieldToolbarItem: FunctionComponent<{
-    models: Model[]
-    userInfo: UserAccountInfo
-    focusEditor?: () => void
-    className?: string
-    extensionAPI: WebviewToExtensionAPI
-    modelSelectorRef: React.MutableRefObject<{ open: () => void; close: () => void } | null>
-    intent?: ChatMessage['intent']
-}> = ({ userInfo, focusEditor, className, models, extensionAPI, modelSelectorRef, intent }) => {
-    const clientConfig = useClientConfig()
-    const serverSentModelsEnabled = !!clientConfig?.modelsAPIEnabled
-
-    const agenticModel = useMemo(() => models.find(m => m.tags.includes(ModelTag.Default)), [models])
-
-    // If in agentic mode, ensure the agentic model is selected
-    useEffect(() => {
-        if (intent === 'agentic' && agenticModel && models[0]?.id !== agenticModel.id) {
-            extensionAPI.setChatModel(agenticModel.id).subscribe({
-                error: error => console.error('Failed to set chat model:', error),
-            })
-        }
-    }, [intent, agenticModel, models, extensionAPI.setChatModel])
-
-    const onModelSelect = useCallback(
-        (model: Model) => {
-            extensionAPI.setChatModel(model.id).subscribe({
-                error: error => console.error('setChatModel:', error),
-            })
-            focusEditor?.()
-        },
-        [extensionAPI.setChatModel, focusEditor]
-    )
-
-    return (
-        !!models?.length &&
-        (userInfo.isDotComUser || serverSentModelsEnabled) && (
-            <ModelSelectField
-                models={models}
-                onModelSelect={onModelSelect}
-                serverSentModelsEnabled={serverSentModelsEnabled}
-                userInfo={userInfo}
-                className={className}
-                data-testid="chat-model-selector"
-                modelSelectorRef={modelSelectorRef}
-                onCloseByEscape={() => modelSelectorRef?.current?.close()}
-                intent={intent}
-            />
-        )
     )
 }

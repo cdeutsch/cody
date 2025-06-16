@@ -1,3 +1,4 @@
+// cspell:ignore fqname bluge
 import type { URI } from 'vscode-uri'
 
 interface Point {

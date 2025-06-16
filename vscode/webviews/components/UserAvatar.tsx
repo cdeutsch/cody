@@ -1,59 +1,29 @@
 import { clsx } from 'clsx'
 import { useState } from 'react'
 import type { FunctionComponent } from 'react'
-import type { UserAccountInfo } from '../Chat'
+
+import { useUser } from '../contexts/UserContext'
+
 import styles from './UserAvatar.module.css'
 
-interface Props {
-    user: NonNullable<UserAccountInfo['user']>
+interface UserAvatarProps {
     size: number
-    sourcegraphGradientBorder?: boolean
     className?: string
 }
 
-const SOURCEGRAPH_GRADIENT_BORDER_SIZE = 1 /* px */
-
-/**
- * UserAvatar displays the avatar of a user.
- */
-export const UserAvatar: FunctionComponent<Props> = ({
-    user,
-    size,
-    sourcegraphGradientBorder,
-    className,
-}) => {
-    const inner = (
-        <InnerUserAvatar
-            user={user}
-            size={sourcegraphGradientBorder ? size - SOURCEGRAPH_GRADIENT_BORDER_SIZE * 2 : size}
-            className={className}
-        />
-    )
-    return sourcegraphGradientBorder ? (
-        <div className={clsx(styles.sourcegraphGradientBorder, 'tw-inline-flex', className)}>
-            {inner}
-        </div>
-    ) : (
-        inner
-    )
-}
-
-const InnerUserAvatar: FunctionComponent<Omit<Props, 'sourcegraphGradientBorder'>> = ({
-    user,
-    size,
-    className,
-}) => {
-    const title = user.displayName || user.username
+export const UserAvatar: FunctionComponent<UserAvatarProps> = ({ size, className }) => {
+    const { user } = useUser()
+    const { displayName } = user
     const highDPISize = size * 2
     const [imgError, setImgError] = useState(false)
 
-    if (user?.avatarURL && !imgError) {
-        let url = user.avatarURL
+    if (user?.avatar_url && !imgError) {
+        let url = user.avatar_url
         try {
-            const urlObject = new URL(user.avatarURL)
+            const urlObject = new URL(user.avatar_url)
             // Add a size param for non-data URLs. This will resize the image if it is hosted on
             // certain places like Gravatar and GitHub.
-            if (size && !user.avatarURL.startsWith('data:')) {
+            if (size && !user.avatar_url.startsWith('data:')) {
                 urlObject.searchParams.set('s', highDPISize.toString())
             }
             url = urlObject.href
@@ -66,8 +36,8 @@ const InnerUserAvatar: FunctionComponent<Omit<Props, 'sourcegraphGradientBorder'
                 className={clsx(styles.userAvatar, className)}
                 src={url}
                 role="presentation"
-                title={title}
-                alt={`Avatar for ${user.username}`}
+                title={displayName}
+                alt={`Avatar for ${displayName}`}
                 width={size}
                 height={size}
                 onError={() => setImgError(true)}
@@ -76,13 +46,11 @@ const InnerUserAvatar: FunctionComponent<Omit<Props, 'sourcegraphGradientBorder'
     }
     return (
         <div
-            title={title}
+            title={displayName}
             className={clsx(styles.userAvatar, className)}
-            style={{ width: `${size}px`, height: `${size}px`, fontSize: `${size / 3}px` }}
+            style={{ width: `${size}px`, height: `${size}px`, fontSize: `${size / 2.25}px` }}
         >
-            <span className={styles.initials}>
-                {getInitials(user?.displayName || user?.username || '')}
-            </span>
+            <span className={styles.initials}>{getInitials(displayName || '')}</span>
         </div>
     )
 }

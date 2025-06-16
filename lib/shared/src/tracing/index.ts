@@ -6,9 +6,8 @@ import opentelemetry, {
     propagation,
     type Span,
 } from '@opentelemetry/api'
-import type { BrowserOrNodeResponse } from '../sourcegraph-api/graphql/client'
 
-const INSTRUMENTATION_SCOPE_NAME = 'cody'
+const INSTRUMENTATION_SCOPE_NAME = 'driver'
 const INSTRUMENTATION_SCOPE_VERSION = '0.1'
 
 export const tracer = opentelemetry.trace.getTracer(
@@ -68,17 +67,17 @@ export function addTraceparent(headers: Headers): void {
     })
 }
 
-export function logResponseHeadersToSpan(span: Span, response: BrowserOrNodeResponse) {
-    const responseHeaders: Record<string, string> = {}
-    response.headers.forEach((value, key) => {
-        responseHeaders[key] = value
-    })
-    span.addEvent('response')
-    span.setAttributes({
-        ...responseHeaders,
-        status: response.status,
-    })
-}
+// export function logResponseHeadersToSpan(span: Span, response: BrowserOrNodeResponse) {
+//   const responseHeaders: Record<string, string> = {};
+//   response.headers.forEach((value, key) => {
+//     responseHeaders[key] = value;
+//   });
+//   span.addEvent('response');
+//   span.setAttributes({
+//     ...responseHeaders,
+//     status: response.status,
+//   });
+// }
 
 export function getTraceparentHeaders(): { [key: string]: string } {
     const headers: { [key: string]: string } = {}

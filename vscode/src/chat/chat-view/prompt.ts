@@ -2,7 +2,6 @@ import {
     type ContextItem,
     type Message,
     PromptMixin,
-    currentResolvedConfig,
     firstResultFromOperation,
     getSimplePreamble,
     isDefined,
@@ -17,7 +16,7 @@ export interface PromptInfo {
     /**
      * The context items processed for the current message:
      * - used: Context items that were used in the prompt.
-     * - ignored: Context items that were ignored due to context limit or cody ignored.
+     * - ignored: Context items that were ignored due to context limit or driver ignored.
      */
     context: {
         used: ContextItem[]
@@ -35,19 +34,16 @@ export class DefaultPrompter {
     //
     // Returns the reverse prompt and the new context that was used in the prompt for the current message.
     // If user-context added at the last message is ignored, returns the items in the newContextIgnored array.
-    public async makePrompt(
-        chat: ChatBuilder,
-        codyApiVersion: number,
-        mixins: PromptMixin[] = []
-    ): Promise<PromptInfo> {
+    public async makePrompt(chat: ChatBuilder, mixins: PromptMixin[] = []): Promise<PromptInfo> {
         return wrapInActiveSpan('chat.prompter', async () => {
             const contextWindow = await firstResultFromOperation(ChatBuilder.contextWindowForChat(chat))
             const promptBuilder = await PromptBuilder.create(contextWindow)
-            const preInstruction = (await currentResolvedConfig()).configuration.chatPreInstruction
+            // const preInstruction = (await currentResolvedConfig()).configuration.chatPreInstruction;
+            const preInstruction = undefined
 
             // Add preamble messages
             const chatModel = await firstResultFromOperation(ChatBuilder.resolvedModelForChat(chat))
-            const preambleMessages = getSimplePreamble(chatModel, codyApiVersion, 'Chat', preInstruction)
+            const preambleMessages = getSimplePreamble(chatModel, 'Chat', preInstruction)
             if (!promptBuilder.tryAddToPrefix(preambleMessages)) {
                 throw new Error(`Preamble length exceeded context window ${contextWindow.input}`)
             }

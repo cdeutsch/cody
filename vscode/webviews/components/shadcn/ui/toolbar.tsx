@@ -154,9 +154,12 @@ export const ToolbarPopoverItem: FunctionComponent<
 
     const popoverContentRef = useRef<HTMLDivElement>(null)
 
+    const popoverRootPropsOnOpenChange = popoverRootProps?.onOpenChange
+    const popoverContentPropsOnKeyDown = popoverContentProps?.onKeyDown
+
     const onOpenChange = useCallback(
         (open: boolean): void => {
-            popoverRootProps?.onOpenChange?.(open)
+            popoverRootPropsOnOpenChange?.(open)
 
             setIsOpen(open)
 
@@ -173,7 +176,7 @@ export const ToolbarPopoverItem: FunctionComponent<
                 anchorRef.current?.focus()
             }
         },
-        [popoverRootProps?.onOpenChange]
+        [popoverRootPropsOnOpenChange]
     )
 
     const close = useCallback(() => {
@@ -186,9 +189,9 @@ export const ToolbarPopoverItem: FunctionComponent<
             if (event.key === 'Escape') {
                 onCloseByEscape?.()
             }
-            popoverContentProps?.onKeyDown?.(event)
+            popoverContentPropsOnKeyDown?.(event)
         },
-        [onCloseByEscape, popoverContentProps?.onKeyDown]
+        [onCloseByEscape, popoverContentPropsOnKeyDown]
     )
 
     return (

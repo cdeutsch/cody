@@ -1,12 +1,9 @@
 import {
     type ChatMessage,
-    type Guardrails,
-    type Model,
-    type NLSSearchDynamicFilter,
+    type PrimaryAssetRecord,
     type SerializedPromptEditorValue,
     deserializeContextItem,
     isAbortErrorOrSocketHangUp,
-    serializedPromptEditorStateFromText,
 } from '@sourcegraph/cody-shared'
 import type { PromptEditorRefAPI } from '@sourcegraph/prompt-editor'
 import { clsx } from 'clsx'
@@ -15,7 +12,6 @@ import {
     type FC,
     memo,
     useCallback,
-    useContext,
     useEffect,
     useImperativeHandle,
     useMemo,
@@ -25,9 +21,6 @@ import {
 import type { UserAccountInfo } from '../Chat'
 import type { ApiPostMessage } from '../Chat'
 import { getVSCodeAPI } from '../utils/VSCodeApi'
-import { SpanManager } from '../utils/spanManager'
-import { getTraceparentFromSpanContext } from '../utils/telemetry'
-import { useOmniBox } from '../utils/useOmniBox'
 import type { CodeBlockActionsProps } from './ChatMessageContent/ChatMessageContent'
 import {
     AssistantMessageCell,
@@ -35,16 +28,9 @@ import {
 } from './cells/messageCell/assistant/AssistantMessageCell'
 import { HumanMessageCell } from './cells/messageCell/human/HumanMessageCell'
 
-import { type Context, type Span, context, trace } from '@opentelemetry/api'
-import { DeepCodyAgentID } from '@sourcegraph/cody-shared/src/models/client'
-import * as uuid from 'uuid'
-import { isCodeSearchContextItem } from '../../src/context/openctx/codeSearch'
-import { useClientActionListener } from '../client/clientState'
+import type { Context } from '@opentelemetry/api'
 import { useLocalStorage } from '../components/hooks'
 import { AgenticContextCell } from './cells/agenticCell/AgenticContextCell'
-import ApprovalCell from './cells/agenticCell/ApprovalCell'
-import { ContextCell } from './cells/contextCell/ContextCell'
-import { DidYouMeanNotice } from './cells/messageCell/assistant/DidYouMean'
 import { ToolStatusCell } from './cells/toolCell/ToolStatusCell'
 import { LoadingDots } from './components/LoadingDots'
 import { LastEditorContext } from './context'
@@ -54,15 +40,16 @@ interface TranscriptProps {
     setActiveChatContext: (context: Context | undefined) => void
     chatEnabled: boolean
     transcript: ChatMessage[]
-    models: Model[]
     userInfo: UserAccountInfo
     messageInProgress: ChatMessage | null
-    guardrails: Guardrails
     postMessage?: ApiPostMessage
 
     copyButtonOnSubmit: CodeBlockActionsProps['copyButtonOnSubmit']
     insertButtonOnSubmit?: CodeBlockActionsProps['insertButtonOnSubmit']
     smartApply?: CodeBlockActionsProps['smartApply']
+    primaryAsset?: PrimaryAssetRecord
+    primaryAssetLoaded?: boolean
+    chatID?: string
 }
 
 export const Transcript: FC<TranscriptProps> = props => {
@@ -71,14 +58,15 @@ export const Transcript: FC<TranscriptProps> = props => {
         setActiveChatContext,
         chatEnabled,
         transcript,
-        models,
         userInfo,
         messageInProgress,
-        guardrails,
         postMessage,
         copyButtonOnSubmit,
         insertButtonOnSubmit,
         smartApply,
+        primaryAsset,
+        primaryAssetLoaded,
+        chatID,
     } = props
 
     const interactions = useMemo(
@@ -106,7 +94,7 @@ export const Transcript: FC<TranscriptProps> = props => {
 
     return (
         <div
-            className={clsx(' tw-px-8 tw-py-4 tw-flex tw-flex-col tw-gap-4', {
+            className={clsx('tw-px-8 tw-py-4 tw-flex tw-flex-col tw-gap-4', {
                 'tw-flex-grow': transcript.length > 0,
             })}
         >
@@ -116,11 +104,9 @@ export const Transcript: FC<TranscriptProps> = props => {
                         key={interaction.humanMessage.index}
                         activeChatContext={activeChatContext}
                         setActiveChatContext={setActiveChatContext}
-                        models={models}
                         chatEnabled={chatEnabled}
                         userInfo={userInfo}
                         interaction={interaction}
-                        guardrails={guardrails}
                         postMessage={postMessage}
                         copyButtonOnSubmit={copyButtonOnSubmit}
                         insertButtonOnSubmit={insertButtonOnSubmit}
@@ -145,6 +131,9 @@ export const Transcript: FC<TranscriptProps> = props => {
                                 ? lastHumanEditorRef
                                 : undefined
                         }
+                        primaryAsset={primaryAsset}
+                        primaryAssetLoaded={primaryAssetLoaded}
+                        chatID={chatID}
                     />
                 ))}
             </LastEditorContext.Provider>
@@ -214,6 +203,7 @@ export function transcriptToInteractionPairs(
                 speaker: 'human',
                 isUnsentFollowup: true,
                 intent: lastHumanMessage?.intent === 'agentic' ? 'agentic' : 'chat',
+                sourceNodeIds: lastHumanMessage?.sourceNodeIds,
             },
             assistantMessage: null,
         })
@@ -222,8 +212,7 @@ export function transcriptToInteractionPairs(
     return pairs
 }
 
-interface TranscriptInteractionProps
-    extends Omit<TranscriptProps, 'transcript' | 'messageInProgress' | 'chatID'> {
+interface TranscriptInteractionProps extends Omit<TranscriptProps, 'transcript' | 'messageInProgress'> {
     activeChatContext: Context | undefined
     setActiveChatContext: (context: Context | undefined) => void
     interaction: Interaction
@@ -243,7 +232,6 @@ export type RegeneratingCodeBlockState = {
 const TranscriptInteraction: FC<TranscriptInteractionProps> = memo(props => {
     const {
         interaction: { humanMessage, assistantMessage },
-        models,
         isFirstInteraction,
         isLastInteraction,
         isLastSentInteraction,
@@ -251,16 +239,21 @@ const TranscriptInteraction: FC<TranscriptInteractionProps> = memo(props => {
         userInfo,
         chatEnabled,
         postMessage,
-        guardrails,
         insertButtonOnSubmit,
         copyButtonOnSubmit,
-        smartApply,
         editorRef: parentEditorRef,
+        primaryAsset,
+        primaryAssetLoaded,
+        chatID,
     } = props
+    const [sourceNodeIds, setSourceNodeIds] = useState<string[]>([])
 
-    const { activeChatContext, setActiveChatContext } = props
+    useEffect(() => {
+        setSourceNodeIds(humanMessage.sourceNodeIds ?? [])
+    }, [humanMessage])
+
     const humanEditorRef = useRef<PromptEditorRefAPI | null>(null)
-    const lastEditorRef = useContext(LastEditorContext)
+    // const lastEditorRef = useContext(LastEditorContext);
     useImperativeHandle(parentEditorRef, () => humanEditorRef.current)
 
     const [selectedIntent, setSelectedIntent] = useState<ChatMessage['intent']>(humanMessage?.intent)
@@ -275,27 +268,6 @@ const TranscriptInteraction: FC<TranscriptInteractionProps> = memo(props => {
 
     const onUserAction = useCallback(
         (action: 'edit' | 'submit', manuallySelectedIntent: ChatMessage['intent']) => {
-            // Start the span as soon as the user initiates the action
-            const startMark = performance.mark('startSubmit')
-            const spanManager = new SpanManager('cody-webview')
-            const span = spanManager.startSpan('chat-interaction', {
-                attributes: {
-                    sampled: true,
-                    'render.state': 'started',
-                    'startSubmit.mark': startMark.startTime,
-                },
-            })
-
-            if (!span) {
-                throw new Error('Failed to start span for chat interaction')
-            }
-
-            const spanContext = trace.setSpan(context.active(), span)
-            setActiveChatContext(spanContext)
-            const currentSpanContext = span.spanContext()
-
-            const traceparent = getTraceparentFromSpanContext(currentSpanContext)
-
             // Serialize the editor value after starting the span
             const editorValue = humanEditorRef.current?.getSerializedValue()
             if (!editorValue) {
@@ -305,8 +277,8 @@ const TranscriptInteraction: FC<TranscriptInteractionProps> = memo(props => {
 
             const commonProps = {
                 editorValue,
-                traceparent,
                 manuallySelectedIntent,
+                sourceNodeIds,
             }
 
             if (action === 'edit') {
@@ -316,9 +288,9 @@ const TranscriptInteraction: FC<TranscriptInteractionProps> = memo(props => {
                 // NOTE: Doing this for the penultimate input only seems to suffice because
                 // editing a message earlier in the transcript will clear the conversation
                 // and reset the last input anyway.
-                if (isLastSentInteraction) {
-                    lastEditorRef.current?.filterMentions(item => !isCodeSearchContextItem(item))
-                }
+                // if (isLastSentInteraction) {
+                //   lastEditorRef.current?.filterMentions((item) => !isCodeSearchContextItem(item));
+                // }
                 editHumanMessage({
                     messageIndexInTranscript: humanMessage.index,
                     ...commonProps,
@@ -329,11 +301,8 @@ const TranscriptInteraction: FC<TranscriptInteractionProps> = memo(props => {
                 })
             }
         },
-        [humanMessage, setActiveChatContext, isLastSentInteraction, lastEditorRef]
+        [humanMessage, sourceNodeIds]
     )
-
-    // Omnibox is enabled if the user is not a dotcom user and the omnibox is enabled
-    const omniboxEnabled = useOmniBox() && !userInfo?.isDotComUser
 
     const vscodeAPI = getVSCodeAPI()
     const onStop = useCallback(() => {
@@ -342,7 +311,8 @@ const TranscriptInteraction: FC<TranscriptInteractionProps> = memo(props => {
         })
     }, [vscodeAPI])
 
-    const isSearchIntent = omniboxEnabled && humanMessage.intent === 'search'
+    // const isSearchIntent = omniboxEnabled && humanMessage.intent === 'search';
+    const isSearchIntent = false
 
     const isContextLoading = Boolean(
         !isSearchIntent &&
@@ -351,132 +321,17 @@ const TranscriptInteraction: FC<TranscriptInteractionProps> = memo(props => {
             assistantMessage?.text === undefined &&
             assistantMessage?.subMessages === undefined
     )
-    const spanManager = new SpanManager('cody-webview')
-    const renderSpan = useRef<Span>()
-    const timeToFirstTokenSpan = useRef<Span>()
-    const hasRecordedFirstToken = useRef(false)
 
-    const [isLoading, setIsLoading] = useState(assistantMessage?.isLoading)
+    const [_isLoading, setIsLoading] = useState(assistantMessage?.isLoading)
 
     const [isThoughtProcessOpened, setThoughtProcessOpened] = useLocalStorage(
-        'cody.thinking-space.open',
+        'driver-ai.thinking-space.open',
         true
     )
 
     useEffect(() => {
         setIsLoading(assistantMessage?.isLoading)
     }, [assistantMessage])
-
-    const humanMessageText = humanMessage.text
-    const smartApplyWithInstruction = useMemo(() => {
-        if (!smartApply) return undefined
-        return {
-            ...smartApply,
-            onSubmit(params: Parameters<typeof smartApply.onSubmit>[0]) {
-                return smartApply.onSubmit({
-                    ...params,
-                    instruction: params.instruction ?? humanMessageText,
-                })
-            },
-        }
-    }, [smartApply, humanMessageText])
-
-    useEffect(() => {
-        if (!assistantMessage) return
-
-        const startRenderSpan = () => {
-            // Reset the spans to their initial state
-            renderSpan.current = undefined
-            timeToFirstTokenSpan.current = undefined
-            hasRecordedFirstToken.current = false
-
-            const startRenderMark = performance.mark('startRender')
-            // Start a new span for rendering the assistant message
-            renderSpan.current = spanManager.startSpan('assistant-message-render', {
-                attributes: {
-                    sampled: true,
-                    'message.index': assistantMessage.index,
-                    'render.start_time': startRenderMark.startTime,
-                    'parent.span.id': activeChatContext
-                        ? trace.getSpan(activeChatContext)?.spanContext().spanId
-                        : undefined,
-                },
-                context: activeChatContext,
-            })
-            // Start a span to measure time to first token
-            timeToFirstTokenSpan.current = spanManager.startSpan('time-to-first-token', {
-                attributes: { 'message.index': assistantMessage.index },
-                context: activeChatContext,
-            })
-        }
-
-        const endRenderSpan = () => {
-            // Mark the end of rendering
-            performance.mark('endRender')
-            // Measure the duration of the render
-            const measure = performance.measure('renderDuration', 'startRender', 'endRender')
-            if (renderSpan.current && measure.duration > 0) {
-                // Set attributes and end the render span
-                renderSpan.current.setAttributes({
-                    'render.success': !assistantMessage?.error,
-                    'message.length': assistantMessage?.text?.length ?? 0,
-                    'render.total_time': measure.duration,
-                })
-                renderSpan.current.end()
-            }
-
-            renderSpan.current = undefined
-            hasRecordedFirstToken.current = false
-
-            if (activeChatContext) {
-                const rootSpan = trace.getSpan(activeChatContext)
-                if (rootSpan) {
-                    // Calculate and set the total chat time
-                    const chatTotalTime =
-                        performance.now() - performance.getEntriesByName('startSubmit')[0].startTime
-                    rootSpan.setAttributes({
-                        'chat.completed': true,
-                        'render.state': 'completed',
-                        'chat.total_time': chatTotalTime,
-                    })
-                    rootSpan.end()
-                }
-            }
-            // Clear the active chat context
-            setActiveChatContext(undefined)
-        }
-
-        const endFirstTokenSpan = () => {
-            if (renderSpan.current && timeToFirstTokenSpan.current) {
-                // Mark the first token
-                performance.mark('firstToken')
-                // Measure the time to first token
-                performance.measure('timeToFirstToken', 'startRender', 'firstToken')
-                const firstTokenMeasure = performance.getEntriesByName('timeToFirstToken')[0]
-                if (firstTokenMeasure.duration > 0) {
-                    // Set attributes and end the time-to-first-token span
-                    timeToFirstTokenSpan.current.setAttributes({
-                        'time.to.first.token': firstTokenMeasure.duration,
-                    })
-                    timeToFirstTokenSpan.current.end()
-                    timeToFirstTokenSpan.current = undefined
-                    hasRecordedFirstToken.current = true
-                }
-            }
-        }
-        // Case 3: End the time-to-first-token span when the first token appears
-        if (assistantMessage.text && !hasRecordedFirstToken.current && timeToFirstTokenSpan.current) {
-            endFirstTokenSpan()
-        }
-        // Case 1: Start rendering if the assistant message is loading and no render span exists
-        if (assistantMessage.isLoading && !renderSpan.current && activeChatContext) {
-            context.with(activeChatContext, startRenderSpan)
-        }
-        // Case 2: End rendering if loading is complete and a render span exists
-        else if (!isLoading && renderSpan.current) {
-            endRenderSpan()
-        }
-    }, [assistantMessage, activeChatContext, setActiveChatContext, spanManager, isLoading])
 
     const humanMessageInfo = useMemo(() => {
         // See SRCH-942: it's critical to memoize this value to avoid repeated
@@ -507,87 +362,6 @@ const TranscriptInteraction: FC<TranscriptInteractionProps> = memo(props => {
         [humanMessage, onUserAction, selectedIntent]
     )
 
-    const onSelectedFiltersUpdate = useCallback(
-        (selectedFilters: NLSSearchDynamicFilter[]) => {
-            reevaluateSearchWithSelectedFilters({
-                messageIndexInTranscript: humanMessage.index,
-                selectedFilters,
-            })
-        },
-        [humanMessage.index]
-    )
-
-    const editAndSubmitSearch = useCallback(
-        (text: string) => {
-            setSelectedIntent('search')
-            editHumanMessage({
-                messageIndexInTranscript: humanMessage.index,
-                editorValue: {
-                    text,
-                    contextItems: [],
-                    editorState: serializedPromptEditorStateFromText(text),
-                },
-                manuallySelectedIntent: 'search',
-            })
-        },
-        [humanMessage]
-    )
-
-    // We track, ephemerally, the code blocks that are being regenerated so
-    // we can show an accurate loading indicator or error message on those
-    // blocks.
-    const [regeneratingCodeBlocks, setRegeneratingCodeBlocks] = useState<RegeneratingCodeBlockState[]>(
-        []
-    )
-    useClientActionListener(
-        { isActive: true, selector: event => Boolean(event.regenerateStatus) },
-        useCallback(event => {
-            setRegeneratingCodeBlocks(blocks => {
-                switch (event.regenerateStatus?.status) {
-                    case 'done': {
-                        // A block is done, so remove it from the list of generating blocks.
-                        const regenerateStatus = event.regenerateStatus
-                        return blocks.filter(block => block.id !== regenerateStatus.id).slice()
-                    }
-                    case 'error': {
-                        // A block errored, so remove it from the list of generating blocks.
-                        const regenerateStatus = event.regenerateStatus
-                        return blocks
-                            .map(block =>
-                                block.id === regenerateStatus.id
-                                    ? { ...block, error: regenerateStatus.error }
-                                    : block
-                            )
-                            .slice()
-                    }
-                    default:
-                        return blocks
-                }
-            })
-        }, [])
-    )
-
-    const onRegenerate = useCallback(
-        (code: string, language?: string) => {
-            if (assistantMessage) {
-                const id = uuid.v4()
-                regenerateCodeBlock({ id, code, language, index: assistantMessage.index })
-                setRegeneratingCodeBlocks(blocks => [
-                    { id, index: assistantMessage.index, code, error: undefined },
-                    ...blocks,
-                ])
-            } else {
-                console.warn('tried to regenerate a code block, but there is no assistant message')
-            }
-        },
-        [assistantMessage]
-    )
-
-    const isAgenticMode = useMemo(
-        () => humanMessage?.manuallySelectedIntent === 'agentic' || humanMessage?.intent === 'agentic',
-        [humanMessage?.intent, humanMessage?.manuallySelectedIntent]
-    )
-
     const agentToolCalls = useMemo(() => {
         return assistantMessage?.contextFiles?.filter(f => f.type === 'tool-state')
     }, [assistantMessage?.contextFiles])
@@ -598,8 +372,6 @@ const TranscriptInteraction: FC<TranscriptInteractionProps> = memo(props => {
             {isLastInteraction && priorAssistantMessageIsLoading && <LoadingDots />}
             <HumanMessageCell
                 key={humanMessage.index}
-                userInfo={userInfo}
-                models={models}
                 chatEnabled={chatEnabled}
                 message={humanMessage}
                 isFirstMessage={humanMessage.index === 0}
@@ -614,63 +386,57 @@ const TranscriptInteraction: FC<TranscriptInteractionProps> = memo(props => {
                 className={!isFirstInteraction && isLastInteraction ? 'tw-mt-auto' : ''}
                 intent={selectedIntent}
                 manuallySelectIntent={setSelectedIntent}
+                primaryAsset={primaryAsset}
+                primaryAssetLoaded={primaryAssetLoaded}
+                chatID={chatID}
+                handleTunerSubmit={setSourceNodeIds}
+                sourceNodeIds={sourceNodeIds}
             />
-            {!isAgenticMode && (
-                <>
-                    {omniboxEnabled && assistantMessage?.didYouMeanQuery && (
-                        <DidYouMeanNotice
-                            query={assistantMessage?.didYouMeanQuery}
-                            disabled={!!assistantMessage?.isLoading}
-                            switchToSearch={() => {
-                                editAndSubmitSearch(assistantMessage?.didYouMeanQuery ?? '')
-                            }}
-                        />
-                    )}
-                    {!isSearchIntent && humanMessage.agent && (
-                        <AgenticContextCell
-                            key={`${humanMessage.index}-${humanMessage.intent}-process`}
-                            isContextLoading={isContextLoading}
-                            processes={humanMessage?.processes ?? undefined}
-                        />
-                    )}
-                    {humanMessage.agent && assistantMessage?.isLoading && (
-                        <ApprovalCell vscodeAPI={vscodeAPI} />
-                    )}
-                    {!(humanMessage.agent && isContextLoading) &&
-                        (humanMessage.contextFiles || assistantMessage || isContextLoading) &&
-                        !isSearchIntent && (
-                            <ContextCell
-                                key={`${humanMessage.index}-${humanMessage.intent}-context`}
-                                contextItems={humanMessage.contextFiles}
-                                contextAlternatives={humanMessage.contextAlternatives}
-                                model={assistantMessage?.model}
-                                isForFirstMessage={humanMessage.index === 0}
-                                isContextLoading={isContextLoading}
-                                defaultOpen={isContextLoading && humanMessage.agent === DeepCodyAgentID}
-                                agent={humanMessage?.agent ?? undefined}
-                            />
-                        )}
-                </>
-            )}
+
+            <>
+                {/* {omniboxEnabled && assistantMessage?.didYouMeanQuery && (
+            <DidYouMeanNotice
+              query={assistantMessage?.didYouMeanQuery}
+              disabled={!!assistantMessage?.isLoading}
+              switchToSearch={() => {
+                editAndSubmitSearch(assistantMessage?.didYouMeanQuery ?? '');
+              }}
+            />
+          )} */}
+                {!isSearchIntent && (
+                    <AgenticContextCell
+                        key={`${humanMessage.index}-${humanMessage.intent}-process`}
+                        isContextLoading={isContextLoading}
+                        processes={humanMessage?.processes ?? undefined}
+                    />
+                )}
+                {/* {!(humanMessage.agent && isContextLoading) &&
+          (humanMessage.contextFiles || assistantMessage || isContextLoading) &&
+          !isSearchIntent && (
+            <ContextCell
+              key={`${humanMessage.index}-${humanMessage.intent}-context`}
+              contextItems={humanMessage.contextFiles}
+              contextAlternatives={humanMessage.contextAlternatives}
+              isForFirstMessage={humanMessage.index === 0}
+              isContextLoading={isContextLoading}
+              defaultOpen={isContextLoading && humanMessage.agent === DeepDriverAgentID}
+            />
+          )} */}
+            </>
+
             {assistantMessage &&
                 (!isContextLoading ||
                     (assistantMessage.subMessages && assistantMessage.subMessages.length > 0)) && (
                     <AssistantMessageCell
                         key={assistantMessage.index}
                         userInfo={userInfo}
-                        models={models}
                         chatEnabled={chatEnabled}
                         message={assistantMessage}
                         copyButtonOnSubmit={copyButtonOnSubmit}
                         insertButtonOnSubmit={insertButtonOnSubmit}
-                        onRegenerate={onRegenerate}
-                        regeneratingCodeBlocks={regeneratingCodeBlocks}
                         postMessage={postMessage}
-                        guardrails={guardrails}
                         humanMessage={humanMessageInfo}
                         isLoading={isLastSentInteraction && assistantMessage.isLoading}
-                        smartApply={isAgenticMode ? undefined : smartApplyWithInstruction}
-                        onSelectedFiltersUpdate={onSelectedFiltersUpdate}
                         isLastSentInteraction={isLastSentInteraction}
                         setThoughtProcessOpened={setThoughtProcessOpened}
                         isThoughtProcessOpened={isThoughtProcessOpened}
@@ -688,6 +454,8 @@ const TranscriptInteraction: FC<TranscriptInteractionProps> = memo(props => {
         </>
     )
 }, isEqual)
+
+TranscriptInteraction.displayName = 'TranscriptInteraction'
 
 // TODO(sqs): Do this the React-y way.
 export function focusLastHumanMessageEditor(): void {
@@ -708,34 +476,16 @@ export function focusLastHumanMessageEditor(): void {
     }
 }
 
-export function regenerateCodeBlock({
-    id,
-    code,
-    language,
-    index,
-}: {
-    id: string
-    code: string
-    language?: string
-    index: number
-}) {
-    getVSCodeAPI().postMessage({
-        command: 'regenerateCodeBlock',
-        id,
-        code,
-        language,
-        index,
-    })
-}
-
 export function editHumanMessage({
     messageIndexInTranscript,
     editorValue,
     manuallySelectedIntent,
+    sourceNodeIds,
 }: {
     messageIndexInTranscript: number
     editorValue: SerializedPromptEditorValue
     manuallySelectedIntent?: ChatMessage['intent']
+    sourceNodeIds?: string[]
 }): void {
     getVSCodeAPI().postMessage({
         command: 'edit',
@@ -744,6 +494,7 @@ export function editHumanMessage({
         editorState: editorValue.editorState,
         contextItems: editorValue.contextItems.map(deserializeContextItem),
         manuallySelectedIntent,
+        sourceNodeIds,
     })
     focusLastHumanMessageEditor()
 }
@@ -751,11 +502,11 @@ export function editHumanMessage({
 function submitHumanMessage({
     editorValue,
     manuallySelectedIntent,
-    traceparent,
+    sourceNodeIds,
 }: {
     editorValue: SerializedPromptEditorValue
     manuallySelectedIntent?: ChatMessage['intent']
-    traceparent: string
+    sourceNodeIds?: string[]
 }): void {
     getVSCodeAPI().postMessage({
         command: 'submit',
@@ -763,21 +514,7 @@ function submitHumanMessage({
         editorState: editorValue.editorState,
         contextItems: editorValue.contextItems.map(deserializeContextItem),
         manuallySelectedIntent,
-        traceparent,
+        sourceNodeIds,
     })
     focusLastHumanMessageEditor()
-}
-
-function reevaluateSearchWithSelectedFilters({
-    messageIndexInTranscript,
-    selectedFilters,
-}: {
-    messageIndexInTranscript: number
-    selectedFilters: NLSSearchDynamicFilter[]
-}): void {
-    getVSCodeAPI().postMessage({
-        command: 'reevaluateSearchWithSelectedFilters',
-        index: messageIndexInTranscript,
-        selectedFilters,
-    })
 }

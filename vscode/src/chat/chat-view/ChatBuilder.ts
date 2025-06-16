@@ -6,6 +6,7 @@ import {
     type ContextItem,
     type MessagePart,
     type ModelContextWindow,
+    type PrimaryAssetRecord,
     type ProcessingStep,
     PromptString,
     type RankedContext,
@@ -85,6 +86,9 @@ export class ChatBuilder {
         )
     }
 
+    private primaryAsset?: PrimaryAssetRecord
+    private primaryAssetLoaded = false
+
     private changeNotifications = new Subject<void>()
     constructor(
         /**
@@ -95,6 +99,8 @@ export class ChatBuilder {
         public selectedModel?: ChatModel | undefined,
 
         public readonly sessionID: string = new Date(Date.now()).toUTCString(),
+        public llmSessionId?: string,
+        public primaryAssetId?: string,
         private messages: ChatMessage[] = [],
         private customChatTitle?: string
     ) {}
@@ -111,6 +117,17 @@ export class ChatBuilder {
      */
     public setSelectedModel(newModelID: ChatModel | undefined): void {
         this.selectedModel = newModelID
+        this.changeNotifications.next()
+    }
+
+    public async setPrimaryAsset(newPrimaryAsset: PrimaryAssetRecord | undefined): Promise<void> {
+        this.primaryAsset = newPrimaryAsset
+        this.primaryAssetLoaded = true
+        this.changeNotifications.next()
+    }
+
+    public async setPrimaryAssetId(newPrimaryAssetId: string | undefined): Promise<void> {
+        this.primaryAssetId = newPrimaryAssetId
         this.changeNotifications.next()
     }
 
@@ -166,9 +183,10 @@ export class ChatBuilder {
     }
 
     public addHumanMessage(message: Omit<ChatMessage, 'speaker'>): void {
-        if (this.messages.at(-1)?.speaker === 'human') {
-            throw new Error('Cannot add a user message after a user message')
-        }
+        // FUTURE: Add this limitation back?
+        // if (this.messages.at(-1)?.speaker === 'human') {
+        //   throw new Error('Cannot add a user message after a user message');
+        // }
         this.messages.push({ ...message, speaker: 'human' })
         this.changeNotifications.next()
     }
@@ -179,10 +197,7 @@ export class ChatBuilder {
      */
     public static readonly NO_MODEL = Symbol('noChatModel')
 
-    public addBotMessage(
-        message: Omit<ChatMessage, 'speaker' | 'model' | 'error'>,
-        model: ChatModel | typeof ChatBuilder.NO_MODEL
-    ): void {
+    public addBotMessage(message: Omit<ChatMessage, 'speaker' | 'error'>): void {
         const lastMessage = this.messages.at(-1)
         let error: any
         // If there is no text, it could be a placeholder message for an error
@@ -193,7 +208,6 @@ export class ChatBuilder {
             error = this.messages.pop()?.error
         }
         this.messages.push({
-            model: model === ChatBuilder.NO_MODEL ? undefined : model,
             ...message,
             speaker: 'assistant',
             error,
@@ -220,14 +234,13 @@ export class ChatBuilder {
         this.changeNotifications.next()
     }
 
-    public addErrorAsBotMessage(error: Error, model: ChatModel | typeof ChatBuilder.NO_MODEL): void {
+    public addErrorAsBotMessage(error: Error): void {
         const lastMessage = this.messages.at(-1)
         // Remove the last assistant message if any
         const lastAssistantMessage: ChatMessage | undefined =
             lastMessage?.speaker === 'assistant' ? this.messages.pop() : undefined
         // Then add a new assistant message with error added
         this.messages.push({
-            model: model === ChatBuilder.NO_MODEL ? undefined : model,
             ...(lastAssistantMessage ?? {}),
             speaker: 'assistant',
             error: errorToChatError(error),
@@ -259,7 +272,7 @@ export class ChatBuilder {
      * Removes all messages from the given index when it matches the expected speaker.
      *
      * expectedSpeaker must match the speaker of the message at the given index.
-     * This helps ensuring the intented messages are being removed.
+     * This helps ensuring the intended messages are being removed.
      */
     public removeMessagesFromIndex(index: number, expectedSpeaker: 'human' | 'assistant'): void {
         if (this.isEmpty()) {
@@ -294,6 +307,14 @@ export class ChatBuilder {
 
     public getMessages(): readonly ChatMessage[] {
         return this.messages
+    }
+
+    public getPrimaryAsset(): PrimaryAssetRecord | undefined {
+        return this.primaryAsset
+    }
+
+    public getPrimaryAssetLoaded(): boolean {
+        return this.primaryAssetLoaded
     }
 
     // De-hydrate because vscode.Range serializes to `[start, end]` in JSON.
@@ -336,6 +357,8 @@ export class ChatBuilder {
         }
         const result: SerializedChatTranscript = {
             id: this.sessionID,
+            llmSessionId: this.llmSessionId,
+            primaryAssetId: this.primaryAssetId,
             chatTitle: this.customChatTitle ?? undefined,
             lastInteractionTimestamp: this.sessionID,
             interactions,
@@ -347,11 +370,7 @@ export class ChatBuilder {
      * Unified method to append any message part to any speaker.
      * Handles creating new messages or appending to existing ones.
      */
-    public appendMessagePart(
-        part: MessagePart,
-        speaker: 'human' | 'assistant',
-        model?: ChatModel
-    ): void {
+    public appendMessagePart(part: MessagePart, speaker: 'human' | 'assistant'): void {
         const lastMessage = this.messages.at(-1)
         const isNewMessage = !lastMessage || lastMessage.speaker !== speaker
 
@@ -364,7 +383,7 @@ export class ChatBuilder {
             if (speaker === 'human') {
                 this.addHumanMessage({ content, text })
             } else {
-                this.addBotMessage({ content, text }, model || ChatBuilder.NO_MODEL)
+                this.addBotMessage({ content, text })
             }
         } else {
             // Append to existing message
@@ -447,6 +466,7 @@ function messageToSerializedChatInteraction(
     return {
         humanMessage: serializeChatMessage(humanMessage),
         assistantMessage: assistantMessage ? serializeChatMessage(assistantMessage) : null,
+        sourceNodeIds: humanMessage.sourceNodeIds,
     }
 }
 

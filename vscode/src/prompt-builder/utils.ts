@@ -60,7 +60,7 @@ export function renderContextItem(contextItem: ContextItem): ContextMessage | nu
             break
         case ContextItemSource.Editor:
             // This template text works best with prompts in our commands
-            // Using populateCodeContextTemplate here will cause confusion to Cody
+            // Using populateCodeContextTemplate here will cause confusion to Driver
             messageText = populateContextTemplateFromText(
                 ps`Codebase context from file path {displayPath}: `,
                 content,

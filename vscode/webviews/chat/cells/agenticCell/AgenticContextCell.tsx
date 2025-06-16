@@ -1,6 +1,6 @@
 import type { ProcessingStep } from '@sourcegraph/cody-shared'
 import { BrainIcon, CircleXIcon, Loader2Icon } from 'lucide-react'
-import { type FC, type FunctionComponent, memo, useCallback, useState } from 'react'
+import { type FC, type FunctionComponent, memo, useCallback, useEffect, useState } from 'react'
 import {
     Accordion,
     AccordionContent,
@@ -19,12 +19,24 @@ export const AgenticContextCell: FunctionComponent<{
     processes?: ProcessingStep[]
 }> = memo(({ className, isContextLoading, processes }) => {
     const [accordionValue, setAccordionValue] = useState<string | undefined>(undefined)
+    const [accordionTriggeredOnce, setAccordionTriggeredOnce] = useState(false)
 
     const triggerAccordion = useCallback(() => {
         setAccordionValue(prev => {
-            return prev ? '' : CELL_NAME
+            setAccordionTriggeredOnce(true)
+            if (prev) {
+                return ''
+            }
+
+            return CELL_NAME
         })
     }, [])
+
+    useEffect(() => {
+        if (!accordionTriggeredOnce) {
+            setAccordionValue(isContextLoading ? CELL_NAME : undefined)
+        }
+    }, [accordionTriggeredOnce, isContextLoading])
 
     const hasError = processes?.some(p => p.error)
     const status = !isContextLoading
@@ -52,7 +64,7 @@ export const AgenticContextCell: FunctionComponent<{
                         header={
                             <AccordionTrigger
                                 onClick={() => triggerAccordion()}
-                                title="Agentic chat"
+                                title="Status"
                                 className="tw-flex tw-justify-center tw-items-center"
                                 disabled={!processes?.some(p => p.id)}
                             >
@@ -60,7 +72,7 @@ export const AgenticContextCell: FunctionComponent<{
                                     <Loader2Icon size={16} className="tw-animate-spin" />
                                 ) : null}
                                 <span className="tw-flex tw-items-baseline">
-                                    Agentic chat
+                                    Status
                                     <span className="tw-opacity-60 tw-text-sm tw-ml-2">
                                         &mdash; {status.toLowerCase()}
                                     </span>
@@ -87,13 +99,15 @@ export const AgenticContextCell: FunctionComponent<{
     )
 })
 
+AgenticContextCell.displayName = 'AgenticContextCell'
+
 const ProcessList: FC<{
     processes: ProcessingStep[]
     isContextLoading: boolean
     headerIconClassName?: string
 }> = ({ processes, isContextLoading, headerIconClassName }) => {
     return (
-        <div className="tw-flex tw-flex-col tw-gap-3 tw-ml-[1rem]">
+        <div className="tw-flex tw-flex-col tw-gap-3">
             {processes.map(process => (
                 <ProcessItem
                     key={process.id}
@@ -117,7 +131,7 @@ const ProcessItem: FC<{
 
     return (
         <div className="tw-flex tw-items-center tw-gap-3 tw-p-1">
-            <div className={process.type === 'tool' ? 'tw-ml-[1rem] tw-font-sm' : 'tw-ml-0'}>
+            <div className={process.type === 'tool' ? 'tw-font-sm' : 'tw-ml-0'}>
                 {process.type !== 'tool' ? (
                     <BrainIcon strokeWidth={1.25} size={12} className={headerIconClassName} />
                 ) : process.state === 'error' ? (
@@ -127,11 +141,11 @@ const ProcessItem: FC<{
                 ) : null}
             </div>
             <div className="tw-flex-grow tw-min-w-0">
-                <div className="tw-truncate tw-max-w-full tw-text-sm">
+                <div className="tw-truncate-off tw-max-w-full tw-text-sm">
                     <span>{process.type !== 'tool' ? process.title : process.title ?? process.id}</span>
                     {process.content && (
                         <span
-                            className="tw-ml-2 tw-truncate tw-max-w-full tw-text-xs tw-muted-foreground tw-opacity-60"
+                            className="tw-ml-2 tw-truncate-off tw-max-w-full tw-text-xs tw-muted-foreground tw-opacity-60"
                             title={process.type === 'tool' ? 'agentic chat query' : process.content}
                         >
                             ({process.content})

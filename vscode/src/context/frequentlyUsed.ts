@@ -1,11 +1,11 @@
-import type { SerializedContextItem } from '@sourcegraph/cody-shared'
+import type { SerializedContextItem, User } from '@sourcegraph/cody-shared'
 import type { ContextItem } from '@sourcegraph/cody-shared/src/codebase-context/messages'
 import { deserializeContextItem } from '@sourcegraph/cody-shared/src/lexicalEditor/nodes'
 import _ from 'lodash'
 import { localStorage } from '../services/LocalStorageProvider'
 
 // Constants
-const LOCAL_STORAGE_KEY = 'cody-frequently-used-items'
+const LOCAL_STORAGE_KEY = 'driver-frequently-used-items'
 const MAX_STORED_ITEMS = 20
 const MAX_RECENT_ITEMS = 10
 // Time constants for decay calculation (in milliseconds)
@@ -22,14 +22,14 @@ export interface StoredItem {
 const getLocalStorageKey = ({
     authStatus,
     codebase,
-}: { authStatus: { endpoint: string; username: string }; codebase?: string }): string => {
-    return `${LOCAL_STORAGE_KEY}:${authStatus.endpoint}:${authStatus.username}:${codebase || '__HOME__'}`
+}: { authStatus: { user: User }; codebase?: string }): string => {
+    return `${LOCAL_STORAGE_KEY}:${authStatus.user.userId}:${codebase || '__HOME__'}`
 }
 
 const getStoredItems = ({
     authStatus,
     codebase,
-}: { authStatus: { endpoint: string; username: string }; codebase?: string }): StoredItem[] => {
+}: { authStatus: { user: User }; codebase?: string }): StoredItem[] => {
     const data = localStorage.get<string>(getLocalStorageKey({ authStatus, codebase }))
     if (!data) {
         return []
@@ -46,7 +46,7 @@ function saveStoredItems({
     codebase,
 }: {
     items: StoredItem[]
-    authStatus: { endpoint: string; username: string }
+    authStatus: { user: User }
     codebase?: string
 }): void {
     try {
@@ -90,10 +90,7 @@ export function getFrequentlyUsedContextItems({
     codebases,
 }: {
     query?: string
-    authStatus: {
-        endpoint: string
-        username: string
-    }
+    authStatus: { user: User }
     codebases: string[]
 }): ContextItem[] {
     try {
@@ -147,7 +144,7 @@ export function saveFrequentlyUsedContextItems({
     codebases,
 }: {
     items: SerializedContextItem[]
-    authStatus: { endpoint: string; username: string }
+    authStatus: { user: User }
     codebases: string[]
 }): void {
     if (items.length === 0) {

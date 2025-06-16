@@ -4,18 +4,18 @@ import * as vscode from 'vscode'
 
 import { getConfiguration } from './configuration'
 
-export const CODY_OUTPUT_CHANNEL = 'Cody by Sourcegraph'
+export const DRIVER_OUTPUT_CHANNEL = 'Driver AI'
 
 /**
  * Provides a default output channel and creates per-feature output channels when needed.
  */
 class OutputChannelManager {
-    public defaultOutputChannel = vscode.window.createOutputChannel(CODY_OUTPUT_CHANNEL, 'json')
+    public defaultOutputChannel = vscode.window.createOutputChannel(DRIVER_OUTPUT_CHANNEL, 'json')
     private outputChannels: Map<string, vscode.OutputChannel> = new Map()
 
     getOutputChannel(feature: string): vscode.OutputChannel | undefined {
         if (!this.outputChannels.has(feature) && process.env.NODE_ENV === 'development') {
-            const channel = vscode.window.createOutputChannel(`Cody ${feature}`, 'json')
+            const channel = vscode.window.createOutputChannel(`Driver ${feature}`, 'json')
             this.outputChannels.set(feature, channel)
         }
 
@@ -33,7 +33,7 @@ class OutputChannelManager {
         }
 
         // Write to log file if needed
-        const path = process.env.CODY_LOG_FILE
+        const path = process.env.DRIVER_LOG_FILE
         if (path) {
             appendFileSync(path, text + '\n')
         }
@@ -82,11 +82,7 @@ export class Logger {
         args?: unknown[]
     }): void {
         const workspaceConfig = vscode.workspace.getConfiguration()
-        const { debugFilter, debugVerbose } = getConfiguration(workspaceConfig)
-
-        if (level === 'debug' && debugFilter && !debugFilter.test(filterLabel)) {
-            return
-        }
+        const { debugVerbose } = getConfiguration(workspaceConfig)
 
         const message = formatMessage({
             prefix: '█ ',
@@ -103,16 +99,10 @@ export class Logger {
 
 export const outputChannelLogger = new Logger()
 
-/**
- * @deprecated Use outputChannelLogger.logDebug instead.
- */
 export function logDebug(filterLabel: string, text: string, ...args: unknown[]): void {
     outputChannelLogger.logDebug(filterLabel, text, ...args)
 }
 
-/**
- * @deprecated Use outputChannelLogger.logError instead.
- */
 export function logError(filterLabel: string, text: string, ...args: unknown[]): void {
     outputChannelLogger.logError(filterLabel, text, ...args)
 }

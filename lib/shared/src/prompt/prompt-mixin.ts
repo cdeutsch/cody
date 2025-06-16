@@ -34,8 +34,8 @@ export class PromptMixin {
         const mixins = [...PromptMixin.mixins]
 
         // Handle hedging prevention for specific models
-        const apologiticModels = ['3-5-sonnet', '3.5-sonnet']
-        if (modelID && apologiticModels.some(model => modelID.includes(model))) {
+        const apologeticModels = ['3-5-sonnet', '3.5-sonnet']
+        if (modelID && apologeticModels.some(model => modelID.includes(model))) {
             mixins.push(PromptMixin.hedging)
         }
 

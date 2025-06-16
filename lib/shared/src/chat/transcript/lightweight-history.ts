@@ -18,6 +18,9 @@ export interface LightweightChatTranscript {
     /** A unique and opaque identifier for this transcript. */
     id: string
 
+    /** The LLM session ID */
+    llmSessionId?: string
+
     /** The title of the chat */
     chatTitle?: string
 
@@ -49,6 +52,7 @@ export function toLightweightChatTranscript(
 
     return {
         id: transcript.id,
+        llmSessionId: transcript.llmSessionId,
         chatTitle: transcript.chatTitle || firstHumanMessage?.text,
         lastInteractionTimestamp: transcript.lastInteractionTimestamp,
         firstHumanMessageText: firstHumanMessage?.text,

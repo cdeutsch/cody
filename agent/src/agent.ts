@@ -56,7 +56,7 @@ import type { AutoeditRequestID } from '../../vscode/src/autoedits/analytics-log
 import { chatHistory } from '../../vscode/src/chat/chat-view/ChatHistoryManager'
 import type { ExtensionMessage, WebviewMessage } from '../../vscode/src/chat/protocol'
 import { executeExplainCommand, executeSmellCommand } from '../../vscode/src/commands/execute'
-import type { CodyCommandArgs } from '../../vscode/src/commands/types'
+import type { DriverCommandArgs } from '../../vscode/src/commands/types'
 import type { CompletionItemID } from '../../vscode/src/completions/analytics-logger'
 import { loadTscRetriever } from '../../vscode/src/completions/context/retrievers/tsc/load-tsc-retriever'
 import { supportedTscLanguages } from '../../vscode/src/completions/context/retrievers/tsc/supportedTscLanguages'
@@ -424,12 +424,12 @@ export class Agent extends MessageHandler implements ExtensionClient {
                     this.codeLens.removeProvider(codeLensProvider)
                 )
             }
-            if (clientInfo.capabilities?.ignore === 'enabled') {
-                contextFiltersProvider.onContextFiltersChanged(() => {
-                    // Forward policy change notifications to the client.
-                    this.notify('ignore/didChange', null)
-                })
-            }
+            // if (clientInfo.capabilities?.ignore === 'enabled') {
+            //     contextFiltersProvider.onContextFiltersChanged(() => {
+            //         // Forward policy change notifications to the client.
+            //         this.notify('ignore/didChange', null)
+            //     })
+            // }
             if (clientInfo.capabilities?.authentication === 'enabled') {
                 this.authenticationHandler = new AgentAuthHandler()
             }
@@ -1149,7 +1149,7 @@ export class Agent extends MessageHandler implements ExtensionClient {
         })
 
         // The arguments to pass to the command to make sure edit commands would also run in chat mode
-        const commandArgs: Partial<CodyCommandArgs> = { source: 'editor' }
+        const commandArgs: Partial<DriverCommandArgs> = { source: 'editor' }
 
         this.registerAuthenticatedRequest('commands/explain', () => {
             return this.createChatPanel(executeExplainCommand(commandArgs))
@@ -1453,10 +1453,10 @@ export class Agent extends MessageHandler implements ExtensionClient {
             } as const
         })
 
-        this.registerAuthenticatedRequest('testing/ignore/overridePolicy', async contextFilters => {
-            contextFiltersProvider.setTestingContextFilters(contextFilters)
-            return null
-        })
+        // this.registerAuthenticatedRequest('testing/ignore/overridePolicy', async contextFilters => {
+        //     contextFiltersProvider.setTestingContextFilters(contextFilters)
+        //     return null
+        // })
 
         this.registerAuthenticatedRequest('internal/getAuthHeaders', async url => {
             const config = await firstResultFromOperation(resolvedConfig)

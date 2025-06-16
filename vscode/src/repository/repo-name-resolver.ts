@@ -3,22 +3,15 @@ import { Observable, map } from 'observable-fns'
 import * as vscode from 'vscode'
 
 import {
-    ContextFiltersProvider,
     type MaybePendingObservable,
     authStatus,
     combineLatest,
     convertGitCloneURLToCodebaseName,
-    distinctUntilChanged,
     firstResultFromOperation,
-    graphqlClient,
     isDefined,
-    isDotCom,
     isError,
     logError,
-    pendingOperation,
-    pluck,
     promiseFactoryToObservable,
-    resolvedConfig,
     switchMapReplayOperation,
 } from '@sourcegraph/cody-shared'
 
@@ -39,7 +32,7 @@ export class RepoNameResolver {
      * conversion function. ❗️
      */
     public getRepoNamesContainingUri(uri: vscode.Uri): MaybePendingObservable<RepoName[]> {
-        // Fast-path (for Cody Web): if a workspace root is `repo:my/repo`, then files under it
+        // Fast-path (for Driver Web): if a workspace root is `repo:my/repo`, then files under it
         // have repo name `my/repo`.
         const root = vscode.workspace.getWorkspaceFolder(uri)
         if (root && root.uri.scheme === 'repo') {
@@ -56,41 +49,39 @@ export class RepoNameResolver {
         ).pipe(
             switchMapReplayOperation(([remoteUrls, authStatus]) => {
                 // Use local conversion function for non-enterprise accounts.
-                if (isDotCom(authStatus)) {
-                    return Observable.of(
-                        remoteUrls.map(convertGitCloneURLToCodebaseName).filter(isDefined)
-                    )
-                }
+                // if (isDotCom(authStatus)) {
+                return Observable.of(remoteUrls.map(convertGitCloneURLToCodebaseName).filter(isDefined))
+                // }
 
-                // stop here early so combine latest won't be in pending with empty list of streams
-                if (remoteUrls.length === 0) {
-                    return Observable.of([])
-                }
+                // // stop here early so combine latest won't be in pending with empty list of streams
+                // if (remoteUrls.length === 0) {
+                //   return Observable.of([]);
+                // }
 
-                const remoteUrlsAndRepoNames = remoteUrls.map(url =>
-                    this.getRepoNameCached(url).map(repoName => [url, repoName] as const)
-                )
-                return combineLatest(...remoteUrlsAndRepoNames).pipe(
-                    map(remoteUrlsAndRepoNames => {
-                        const repoNames: string[] = []
-                        for (const [url, repoName] of remoteUrlsAndRepoNames) {
-                            if (repoName === pendingOperation) {
-                                return pendingOperation
-                            }
-                            // If we didn't get a repoName (means the repo is local only, not on instance),
-                            // use the git clone URL as the repo name.
-                            if (!repoName) {
-                                const convertedName = convertGitCloneURLToCodebaseName(url)
-                                if (convertedName) {
-                                    repoNames.push(convertedName)
-                                }
-                            } else {
-                                repoNames.push(repoName)
-                            }
-                        }
-                        return repoNames
-                    })
-                )
+                // const remoteUrlsAndRepoNames = remoteUrls.map((url) =>
+                //   this.getRepoNameCached(url).map((repoName) => [url, repoName] as const)
+                // );
+                // return combineLatest(...remoteUrlsAndRepoNames).pipe(
+                //   map((remoteUrlsAndRepoNames) => {
+                //     const repoNames: string[] = [];
+                //     for (const [url, repoName] of remoteUrlsAndRepoNames) {
+                //       if (repoName === pendingOperation) {
+                //         return pendingOperation;
+                //       }
+                //       // If we didn't get a repoName (means the repo is local only, not on instance),
+                //       // use the git clone URL as the repo name.
+                //       if (!repoName) {
+                //         const convertedName = convertGitCloneURLToCodebaseName(url);
+                //         if (convertedName) {
+                //           repoNames.push(convertedName);
+                //         }
+                //       } else {
+                //         repoNames.push(repoName);
+                //       }
+                //     }
+                //     return repoNames;
+                //   })
+                // );
             }),
             map(value => {
                 if (isError(value)) {
@@ -122,42 +113,39 @@ export class RepoNameResolver {
         return remoteUrlsInfo
     }
 
-    private remoteUrlToRepoName = new LRUCache<RemoteUrl, ReturnType<typeof this.getRepoNameCached>>({
-        max: 100,
-    })
-    private getRepoNameCached(remoteUrl: string): MaybePendingObservable<RepoName | null> {
-        const key = remoteUrl
-        let observable = this.remoteUrlToRepoName.get(key)
+    // private remoteUrlToRepoName = new LRUCache<RemoteUrl, ReturnType<typeof this.getRepoNameCached>>({
+    //   max: 100,
+    // });
+    // private getRepoNameCached(remoteUrl: string): MaybePendingObservable<RepoName | null> {
+    //   const key = remoteUrl;
+    //   let observable = this.remoteUrlToRepoName.get(key);
 
-        if (!observable) {
-            observable = resolvedConfig.pipe(
-                pluck('auth'),
-                distinctUntilChanged(),
-                switchMapReplayOperation(
-                    () =>
-                        promiseFactoryToObservable(signal =>
-                            graphqlClient.getRepoName(remoteUrl, signal)
-                        ),
-                    {
-                        // Keep this observable alive with cached repo names,
-                        // even without active subscribers. It's essential for
-                        // `getRepoNameCached` in `ContextFiltersProvider`, which is
-                        // part of the latency-sensitive autocomplete critical path.
-                        shouldCountRefs: false,
-                    }
-                ),
-                map(value => {
-                    if (isError(value)) {
-                        logDebug('RepoNameResolver:getRepoNameCached', 'error', { verbose: value })
-                        return null
-                    }
-                    return value
-                })
-            )
-            this.remoteUrlToRepoName.set(key, observable)
-        }
-        return observable
-    }
+    //   if (!observable) {
+    //     observable = resolvedConfig.pipe(
+    //       pluck('auth'),
+    //       distinctUntilChanged(),
+    //       switchMapReplayOperation(
+    //         () => promiseFactoryToObservable((signal) => graphqlClient.getRepoName(remoteUrl, signal)),
+    //         {
+    //           // Keep this observable alive with cached repo names,
+    //           // even without active subscribers. It's essential for
+    //           // `getRepoNameCached` in `ContextFiltersProvider`, which is
+    //           // part of the latency-sensitive autocomplete critical path.
+    //           shouldCountRefs: false,
+    //         }
+    //       ),
+    //       map((value) => {
+    //         if (isError(value)) {
+    //           logDebug('RepoNameResolver:getRepoNameCached', 'error', { verbose: value });
+    //           return null;
+    //         }
+    //         return value;
+    //       })
+    //     );
+    //     this.remoteUrlToRepoName.set(key, observable);
+    //   }
+    //   return observable;
+    // }
 }
 
 /**
@@ -165,10 +153,10 @@ export class RepoNameResolver {
  */
 export const repoNameResolver = new RepoNameResolver()
 
-ContextFiltersProvider.repoNameResolver = {
-    getRepoNamesContainingUri: (uri, signal) =>
-        firstResultFromOperation(repoNameResolver.getRepoNamesContainingUri(uri), signal),
-}
+// ContextFiltersProvider.repoNameResolver = {
+//   getRepoNamesContainingUri: (uri, signal) =>
+//     firstResultFromOperation(repoNameResolver.getRepoNamesContainingUri(uri), signal),
+// };
 
 export const getFirstRepoNameContainingUri = (uri: vscode.Uri): Promise<RepoName | undefined> => {
     return firstResultFromOperation(repoNameResolver.getRepoNamesContainingUri(uri))

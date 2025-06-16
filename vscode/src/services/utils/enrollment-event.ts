@@ -1,6 +1,4 @@
-import { FeatureFlag } from '@sourcegraph/cody-shared'
-import { telemetryRecorder } from '@sourcegraph/cody-shared'
-import { localStorage } from '../LocalStorageProvider'
+import type { FeatureFlag } from '@sourcegraph/cody-shared'
 
 /**
  * Logs the enrollment event for the given feature flag ONCE in user's lifetime
@@ -13,16 +11,16 @@ import { localStorage } from '../LocalStorageProvider'
  */
 export function logFirstEnrollmentEvent(key: FeatureFlag, isEnabled: boolean): boolean {
     // Check if the user is already enrolled in the experiment or not
-    const isEnrolled = localStorage.getEnrollmentHistory(key)
+    // const isEnrolled = localStorage.getEnrollmentHistory(key);
     // We only want to log the enrollment event once in the user's lifetime.
-    if (!isEnrolled) {
-        const eventName = getFeatureFlagEventName(key)
-        const args = { variant: isEnabled ? 'treatment' : 'control' }
-        telemetryRecorder.recordEvent(`cody.experiment.${eventName}`, 'enrolled', {
-            privateMetadata: args,
-        })
-    }
-    return isEnrolled
+    // if (!isEnrolled) {
+    //   const eventName = getFeatureFlagEventName(key);
+    //   const args = { variant: isEnabled ? 'treatment' : 'control' };
+    //   telemetryRecorder.recordEvent(`driver.experiment.${eventName}`, 'enrolled', {
+    //     privateMetadata: args,
+    //   });
+    // }
+    return true
 }
 
 /**
@@ -30,13 +28,13 @@ export function logFirstEnrollmentEvent(key: FeatureFlag, isEnabled: boolean): b
  * Matches the feature flag key to the corresponding event name.
  * NOTE: Used for logging events for the feature flag.
  */
-function getFeatureFlagEventName(key: FeatureFlag): string {
-    switch (key) {
-        case FeatureFlag.DeepCody:
-            return 'deepCody'
-        case FeatureFlag.CodyPromptCachingOnMessages:
-            return 'promptCachingOnMessages'
-        default:
-            return 'UnregisteredFeature'
-    }
-}
+// function getFeatureFlagEventName(key: FeatureFlag): string {
+//   switch (key) {
+//     case FeatureFlag.DeepDriver:
+//       return 'deepDriver';
+//     case FeatureFlag.DriverPromptCachingOnMessages:
+//       return 'promptCachingOnMessages';
+//     default:
+//       return 'UnregisteredFeature';
+//   }
+// }

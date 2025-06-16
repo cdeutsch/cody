@@ -32,9 +32,7 @@ class ChatHistoryManager implements vscode.Disposable {
         }
     }
 
-    public getLocalHistory(
-        authStatus: Pick<AuthenticatedAuthStatus, 'endpoint' | 'username'>
-    ): UserLocalHistory | null {
+    public getLocalHistory(authStatus: Pick<AuthenticatedAuthStatus, 'user'>): UserLocalHistory | null {
         return localStorage.getChatHistory(authStatus)
     }
 
@@ -55,7 +53,7 @@ class ChatHistoryManager implements vscode.Disposable {
      * @returns A lightweight version of the chat history or null if not available
      */
     public getLightweightHistory(
-        authStatus: Pick<AuthenticatedAuthStatus, 'endpoint' | 'username'>,
+        authStatus: Pick<AuthenticatedAuthStatus, 'user'>,
         limit?: number
     ): LightweightChatHistory | null {
         const history = this.getLocalHistory(authStatus)
@@ -127,7 +125,7 @@ class ChatHistoryManager implements vscode.Disposable {
     private changeNotifications = new Subject<void>()
     public changes: Observable<UserLocalHistory | null> = combineLatest(
         authStatus.pipe(
-            // Only need to rere-fetch the chat history when the endpoint or username changes for
+            // Only need to re-fetch the chat history when the user changes for
             // authed users (i.e., when they switch to a different account), not when anything else
             // in the authStatus might change.
             map(
@@ -135,12 +133,11 @@ class ChatHistoryManager implements vscode.Disposable {
                     authStatus
                 ):
                     | UnauthenticatedAuthStatus
-                    | Pick<AuthenticatedAuthStatus, 'authenticated' | 'endpoint' | 'username'> =>
+                    | Pick<AuthenticatedAuthStatus, 'authenticated' | 'user'> =>
                     authStatus.authenticated
                         ? {
                               authenticated: authStatus.authenticated,
-                              endpoint: authStatus.endpoint,
-                              username: authStatus.username,
+                              user: authStatus.user,
                           }
                         : authStatus
             ),
@@ -160,12 +157,11 @@ class ChatHistoryManager implements vscode.Disposable {
                     authStatus
                 ):
                     | UnauthenticatedAuthStatus
-                    | Pick<AuthenticatedAuthStatus, 'authenticated' | 'endpoint' | 'username'> =>
+                    | Pick<AuthenticatedAuthStatus, 'authenticated' | 'user'> =>
                     authStatus.authenticated
                         ? {
                               authenticated: authStatus.authenticated,
-                              endpoint: authStatus.endpoint,
-                              username: authStatus.username,
+                              user: authStatus.user,
                           }
                         : authStatus
             ),

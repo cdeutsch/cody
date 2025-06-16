@@ -1,3 +1,4 @@
+/* eslint-disable no-empty */
 import { diffJson } from 'diff'
 import isEqual from 'lodash/isEqual'
 import {
@@ -806,7 +807,7 @@ export function tapLog<T>(
     return tapWith(() => {
         const subscriptionSeq = subscriptions++
         function log(event: string, ...args: any[]): void {
-            console.log(`█ ${label}#${subscriptionSeq}(${event}):`, ...args)
+            console.debug(`█ ${label}#${subscriptionSeq}(${event}):`, ...args)
         }
         let emissions = 0
         return {
@@ -1400,7 +1401,7 @@ export function retry<T>(count: number): (source: ObservableLike<T>) => Observab
                     error(err) {
                         if (retries < count && subscription) {
                             retries++
-                            unsuscribeThis()
+                            unsubscribeThis()
                             subscribe()
                         } else {
                             observer.error(err)
@@ -1414,7 +1415,7 @@ export function retry<T>(count: number): (source: ObservableLike<T>) => Observab
                 })
             }
 
-            function unsuscribeThis() {
+            function unsubscribeThis() {
                 if (subscription) {
                     unsubscribe(subscription)
                     subscription = undefined
@@ -1423,6 +1424,6 @@ export function retry<T>(count: number): (source: ObservableLike<T>) => Observab
 
             subscribe()
 
-            return () => unsuscribeThis()
+            return () => unsubscribeThis()
         })
 }

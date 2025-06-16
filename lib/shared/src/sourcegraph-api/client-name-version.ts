@@ -44,14 +44,14 @@ export function getClientIdentificationHeaders() {
     // Only set these headers in non-demo mode, because the demo mode is
     // running in a local server and thus the backend will regard it as an
     // untrusted cross-origin request.
-    if (!process.env.CODY_WEB_DEMO) {
+    if (!process.env.DRIVER_WEB_DEMO) {
         headers['X-Requested-With'] = `${clientName} ${clientVersion}`
     }
 
     return headers
 }
 
-export function addCodyClientIdentificationHeaders(headers: Headers): void {
+export function addDriverClientIdentificationHeaders(headers: Headers): void {
     for (const [key, value] of Object.entries(getClientIdentificationHeaders())) {
         if (headers.has(key)) {
             continue

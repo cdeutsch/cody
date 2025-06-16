@@ -9,11 +9,11 @@
         <!-- This content security policy also implicitly disables inline scripts and styles. -->
         <meta
             http-equiv="Content-Security-Policy"
-            content="default-src 'none'; img-src 'self' https: data:; script-src 'self'; style-src 'self'; font-src data: 'self'; connect-src 'self'; object-src 'self'; frame-src 'self'; media-src blob:;"
+            content="default-src 'none'; img-src 'self' https: data:; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src data: 'self'; connect-src 'self'; object-src 'self'; frame-src 'self'; media-src blob:;"
         />
-        <!-- DO NOT REMOVE: THIS FILE IS THE ENTRY FILE FOR CODY WEBVIEW -->
+        <!-- DO NOT REMOVE: THIS FILE IS THE ENTRY FILE FOR THE WEBVIEW -->
         <!-- END CSP -->
-        <title>Cody</title>
+        <title>Driver AI</title>
     </head>
     <body>
         <div id="root"></div>

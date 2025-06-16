@@ -4,12 +4,12 @@ import {
     type AuthStatus,
     type ClientCapabilitiesWithLegacyFields,
     type ResolvedConfiguration,
-    codyPaths,
+    driverPaths,
 } from '@sourcegraph/cody-shared'
 
 const CONFIG_FILE = 'config.json'
 
-const getConfigPath = () => path.join(codyPaths().config, CONFIG_FILE)
+const getConfigPath = () => path.join(driverPaths().config, CONFIG_FILE)
 
 async function exists(path: string): Promise<boolean> {
     try {
@@ -53,7 +53,7 @@ interface UninstallerConfig {
  * of an uninstall event to log one last telemetry event.
  */
 export async function serializeConfigSnapshot(uninstall: UninstallerConfig) {
-    const directory = codyPaths().config
+    const directory = driverPaths().config
     await ensureDirectoryExists(directory)
     await writeSnapshot(directory, CONFIG_FILE, uninstall)
 }

@@ -1,11 +1,11 @@
 import { type ContextItem, ContextItemSource } from '@sourcegraph/cody-shared'
 
-const isAgentTesting = process.env.CODY_SHIM_TESTING === 'true'
+const isAgentTesting = process.env.DRIVER_SHIM_TESTING === 'true'
 const sortLocale = new Intl.Locale('en-US')
 
 /**
  * Sorts the provided `ContextItem` array in a deterministic order for stable tests.
- * This function is only used when the `CODY_SHIM_TESTING` environment variable is
+ * This function is only used when the `DRIVER_SHIM_TESTING` environment variable is
  * set to `'true'`, which indicates that the agent is running in a testing environment.
  *
  * NOTE: Agent tests require deterministic ordering of context files for consistent results across different file systems

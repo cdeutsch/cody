@@ -6,7 +6,7 @@ export function startAuthProgressIndicator(): void {
     vscode.window.withProgress(
         {
             location: vscode.ProgressLocation.Notification,
-            title: 'Signing in to Sourcegraph...',
+            title: 'Signing in to Driver...',
             cancellable: true,
         },
         (progress, token) => {

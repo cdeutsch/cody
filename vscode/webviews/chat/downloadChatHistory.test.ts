@@ -104,7 +104,7 @@ describe('downloadChatHistory', () => {
         expect(URL.createObjectURL).toHaveBeenCalledTimes(1)
         // Verify anchor element was configured correctly
         expect(mockAnchor.href).toBe(mockObjectURL)
-        expect(mockAnchor.download).toBe('cody-chat-history-2025-04-01T12-34-56.json')
+        expect(mockAnchor.download).toBe('driver-chat-history-2025-04-01T12-34-56.json')
         expect(mockAnchor.target).toBe('_blank')
 
         // Verify click was called to trigger download

@@ -2,7 +2,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import * as vscode from 'vscode'
 
-export async function dumpCodyHeapSnapshot() {
+export async function dumpDriverHeapSnapshot() {
     const isNode = typeof process !== 'undefined'
     if (!isNode) {
         throw new Error('Heap dump is not supported in web')
@@ -11,7 +11,7 @@ export async function dumpCodyHeapSnapshot() {
     try {
         const defaultPath = path.join(
             os.tmpdir(),
-            `cody-heap-${new Date().toISOString().replace(/[:.]/g, '-')}.heapsnapshot`
+            `driver-heap-${new Date().toISOString().replace(/[:.]/g, '-')}.heapsnapshot`
         )
 
         const fileUri = await vscode.window.showSaveDialog({
@@ -19,7 +19,7 @@ export async function dumpCodyHeapSnapshot() {
             filters: {
                 'Heap Snapshots': ['heapsnapshot'],
             },
-            title: 'Save Cody Heap Snapshot',
+            title: 'Save Driver Heap Snapshot',
         })
 
         if (!fileUri) {
@@ -30,7 +30,7 @@ export async function dumpCodyHeapSnapshot() {
         // biome-ignore lint/style/useNodejsImportProtocol: node:v8 would not work for web compilation
         const v8 = require('v8')
         const filename = v8.writeHeapSnapshot(fileUri.path)
-        const msg = `Cody heap dump written to: ${filename}`
+        const msg = `Driver heap dump written to: ${filename}`
         console.log(msg)
         vscode.window.showInformationMessage(msg, 'Open containing folder').then(answer => {
             if (answer === 'Open containing folder') {

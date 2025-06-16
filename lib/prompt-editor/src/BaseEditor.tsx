@@ -7,7 +7,7 @@ import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin'
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin'
 import { clsx } from 'clsx'
 import type { EditorState, LexicalEditor, SerializedEditorState } from 'lexical'
-import { type FunctionComponent, type RefObject, useMemo } from 'react'
+import { type FunctionComponent, type RefObject, useEffect, useMemo } from 'react'
 import styles from './BaseEditor.module.css'
 import { RICH_EDITOR_NODES } from './nodes'
 import { MentionsPlugin } from './plugins/atMentions/atMentions'
@@ -31,7 +31,7 @@ interface Props extends KeyboardEventPluginProps {
 }
 
 /**
- * The low-level rich editor for messages to Cody.
+ * The low-level rich editor for messages to Driver.
  */
 export const BaseEditor: FunctionComponent<Props> = ({
     initialEditorState,
@@ -59,6 +59,12 @@ export const BaseEditor: FunctionComponent<Props> = ({
         }),
         []
     )
+
+    useEffect(() => {
+        if (editorRef?.current) {
+            editorRef.current.setEditable(!disabled)
+        }
+    }, [disabled, editorRef])
 
     return (
         <div className={className}>

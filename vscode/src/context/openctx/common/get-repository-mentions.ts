@@ -1,15 +1,12 @@
 import type { Mention } from '@openctx/client'
 import {
-    type AuthStatus,
+    type RemoteRepo,
     type SuggestionsRepo,
-    contextFiltersProvider,
-    currentAuthStatus,
     firstResultFromOperation,
-    graphqlClient,
-    isError,
+    searchRepoSuggestions,
 } from '@sourcegraph/cody-shared'
 import { Fzf, type FzfOptions } from 'fzf'
-import { type RemoteRepo, remoteReposForAllWorkspaceFolders } from '../../../repository/remoteRepos'
+import { remoteReposForAllWorkspaceFolders } from '../../../repository/remoteRepos'
 
 type ProviderMention = Mention & { providerUri: string }
 
@@ -18,7 +15,7 @@ function starTiebreaker(a: { item: { stars: number } }, b: { item: { stars: numb
 }
 
 const REPO_FZF_OPTIONS: FzfOptions<SuggestionsRepo> = {
-    selector: item => item.name,
+    selector: (item: SuggestionsRepo) => item.name,
     tiebreakers: [starTiebreaker],
     forward: false,
 }
@@ -36,45 +33,44 @@ export async function getRepositoryMentions(
     query: string,
     providerId: string
 ): Promise<ProviderMention[]> {
-    const dataOrError = await graphqlClient.searchRepoSuggestions(query)
-
-    if (isError(dataOrError) || dataOrError === null || dataOrError.search === null) {
-        return []
-    }
-
-    const repositories = dataOrError.search.results.repositories
-    const fzf = new Fzf(repositories, REPO_FZF_OPTIONS)
-
-    let localRepos: RemoteRepo[]
     try {
-        localRepos = (await firstResultFromOperation(remoteReposForAllWorkspaceFolders)) ?? []
-    } catch (error) {}
+        const repositories: SuggestionsRepo[] = await searchRepoSuggestions(query)
+        const fzf = new Fzf(repositories, REPO_FZF_OPTIONS)
 
-    return await Promise.all(
-        fzf.find(cleanRegex(query)).map(repository =>
-            createRepositoryMention(
-                {
-                    ...repository.item,
-                    current: !!localRepos.find(({ name }) => name === repository.item.name),
-                },
-                providerId,
-                currentAuthStatus()
+        let localRepos: RemoteRepo[]
+        try {
+            localRepos = (await firstResultFromOperation(remoteReposForAllWorkspaceFolders)) ?? []
+        } catch (error) {
+            console.error('getRepositoryMentions', 'error', { verbose: error })
+        }
+
+        return await Promise.all(
+            fzf.find(cleanRegex(query)).map(repository =>
+                createRepositoryMention(
+                    {
+                        ...repository.item,
+                        current: !!localRepos.find(({ name }) => name === repository.item.name),
+                    },
+                    providerId
+                )
             )
         )
-    )
+    } catch (error) {
+        console.error('getRepositoryMentions', 'error', { verbose: error })
+        return []
+    }
 }
 
 type MinimalRepoMention = Pick<SuggestionsRepo, 'id' | 'url' | 'name'> & { current?: boolean }
 
 export async function createRepositoryMention(
     repo: MinimalRepoMention,
-    providerId: string,
-    { endpoint }: Pick<AuthStatus, 'endpoint'>
+    providerId: string
 ): Promise<ProviderMention> {
     return {
         title: repo.name,
         providerUri: providerId,
-        uri: endpoint + repo.url,
+        uri: repo.url,
 
         // By default, we show <title> <uri> in the mentions' menu.
         // As repo.url and repo.name are almost same, we do not want to show the uri.
@@ -83,7 +79,8 @@ export async function createRepositoryMention(
         data: {
             repoId: repo.id,
             repoName: repo.name,
-            isIgnored: (await contextFiltersProvider.isRepoNameIgnored(repo.name)) satisfies boolean,
+            // isIgnored: (await contextFiltersProvider.isRepoNameIgnored(repo.name)) satisfies boolean,
+            isIgnored: false,
         },
     }
 }

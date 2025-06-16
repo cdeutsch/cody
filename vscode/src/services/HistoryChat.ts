@@ -93,7 +93,7 @@ export async function displayHistoryQuickPick(authStatus: AuthStatus): Promise<v
                     label: chat.title,
                     onSelect: async () => {
                         await vscode.commands.executeCommand(
-                            'cody.chat.panel.restore',
+                            'driver-ai.chat.panel.restore',
                             chat.id,
                             chat.title
                         )

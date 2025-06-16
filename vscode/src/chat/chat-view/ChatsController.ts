@@ -3,36 +3,27 @@ import * as vscode from 'vscode'
 
 import {
     type AuthenticatedAuthStatus,
-    CODY_PASSTHROUGH_VSCODE_OPEN_COMMAND_ID,
-    type ChatClient,
     DEFAULT_EVENT_SOURCE,
+    DRIVER_PASSTHROUGH_VSCODE_OPEN_COMMAND_ID,
     type PromptMode,
-    type SourcegraphGuardrailsClient,
     authStatus,
     currentAuthStatus,
     currentAuthStatusAuthed,
     editorStateFromPromptString,
     subscriptionDisposable,
-    telemetryRecorder,
 } from '@sourcegraph/cody-shared'
 import { logDebug, logError } from '../../output-channel-logger'
-import type { MessageProviderOptions } from '../MessageProvider'
 
 import type { URI } from 'vscode-uri'
-import type { startTokenReceiver } from '../../auth/token-receiver'
 import type { ExecuteChatArguments } from '../../commands/execute/ask'
 import { getConfiguration } from '../../configuration'
+import type { VSCodeEditor } from '../../editor/vscode-editor'
 import type { ExtensionClient } from '../../extension-client'
 import { type ChatLocation, localStorage } from '../../services/LocalStorageProvider'
 import {
-    handleCodeFromInsertAtCursor,
-    handleCodeFromSaveToNewFile,
-} from '../../services/utils/codeblock-action-tracker'
-import { CodyToolProvider } from '../agentic/CodyToolProvider'
-import type { SmartApplyResult } from '../protocol'
-import {
     ChatController,
     type ChatSession,
+    ChatSidebarViewType,
     disposeWebviewViewOrPanel,
     revealWebviewViewOrPanel,
     webviewViewOrPanelOnDidChangeViewState,
@@ -41,11 +32,9 @@ import {
 import { chatHistory } from './ChatHistoryManager'
 import type { ContextRetriever } from './ContextRetriever'
 
-export const CodyChatEditorViewType = 'cody.editorPanel'
-
-interface Options extends MessageProviderOptions {
+interface Options {
     extensionUri: vscode.Uri
-    startTokenReceiver?: typeof startTokenReceiver
+    editor: VSCodeEditor
 }
 
 export class ChatsController implements vscode.Disposable {
@@ -57,17 +46,14 @@ export class ChatsController implements vscode.Disposable {
     private activeEditor: ChatController | undefined = undefined
 
     // We keep track of the currently authenticated account and dispose open chats when it changes
-    private currentAuthAccount:
-        | undefined
-        | Pick<AuthenticatedAuthStatus, 'endpoint' | 'primaryEmail' | 'username'>
+    // @ts-ignore
+    private currentAuthAccount: undefined | Pick<AuthenticatedAuthStatus, 'user'>
 
     protected disposables: vscode.Disposable[] = []
 
     constructor(
         private options: Options,
-        private chatClient: ChatClient,
         private readonly contextRetriever: ContextRetriever,
-        private readonly guardrails: SourcegraphGuardrailsClient,
         private readonly extensionClient: ExtensionClient
     ) {
         logDebug('ChatsController:constructor', 'init')
@@ -77,11 +63,10 @@ export class ChatsController implements vscode.Disposable {
             subscriptionDisposable(
                 authStatus.subscribe(authStatus => {
                     const hasLoggedOut = !authStatus.authenticated
-                    const hasSwitchedAccount =
-                        this.currentAuthAccount &&
-                        this.currentAuthAccount.endpoint !== authStatus.endpoint
-                    if (hasLoggedOut || hasSwitchedAccount) {
+                    if (hasLoggedOut) {
                         this.disposeAllChats()
+                    } else {
+                        this.panel.clearAndRestartSession()
                     }
 
                     this.currentAuthAccount = authStatus.authenticated ? { ...authStatus } : undefined
@@ -124,7 +109,7 @@ export class ChatsController implements vscode.Disposable {
 
     public registerViewsAndCommands() {
         this.disposables.push(
-            vscode.window.registerWebviewViewProvider('cody.chat', this.panel, {
+            vscode.window.registerWebviewViewProvider(ChatSidebarViewType, this.panel, {
                 webviewOptions: { retainContextWhenHidden: true },
             })
         )
@@ -142,35 +127,41 @@ export class ChatsController implements vscode.Disposable {
         }
 
         this.disposables.push(
-            vscode.commands.registerCommand('cody.chat.moveToEditor', async () => {
+            vscode.commands.registerCommand('driver-ai.chat.moveToEditor', async () => {
                 localStorage.setLastUsedChatModality('editor')
                 return await this.moveChatFromPanelToEditor()
             }),
-            vscode.commands.registerCommand('cody.chat.moveFromEditor', async () => {
+            vscode.commands.registerCommand('driver-ai.chat.moveFromEditor', async () => {
                 localStorage.setLastUsedChatModality('sidebar')
                 return await this.moveChatFromEditorToPanel()
             }),
-            vscode.commands.registerCommand('cody.action.chat', args => this.submitChat(args)),
-            vscode.commands.registerCommand('cody.chat.signIn', () =>
-                vscode.commands.executeCommand('cody.chat.focus')
+            vscode.commands.registerCommand('driver-ai.action.chat', args => this.submitChat(args)),
+            vscode.commands.registerCommand('driver-ai.chat.signIn', () =>
+                vscode.commands.executeCommand('driver-ai.chat.focus')
             ),
-            vscode.commands.registerCommand('cody.chat.newPanel', async args => {
+            vscode.commands.registerCommand('driver-ai.chat.newPanel', async args => {
                 localStorage.setLastUsedChatModality('sidebar')
                 const isVisible = this.panel.isVisible()
                 await this.panel.clearAndRestartSession()
 
                 try {
-                    const { contextItems } = JSON.parse(args) || {}
+                    const { contextItems } = JSON.parse(args || '{}') || {}
                     if (contextItems?.length) {
                         await this.panel.addContextItemsToLastHumanInput(contextItems)
                     }
-                } catch {}
+                } catch (error) {
+                    logError(
+                        'ChatsController:newPanel',
+                        'Error adding context items to last human input in new panel',
+                        error
+                    )
+                }
 
                 if (!isVisible) {
-                    await vscode.commands.executeCommand('cody.chat.focus')
+                    await vscode.commands.executeCommand('driver-ai.chat.focus')
                 }
             }),
-            vscode.commands.registerCommand('cody.chat.newEditorPanel', async args => {
+            vscode.commands.registerCommand('driver-ai.chat.newEditorPanel', async args => {
                 localStorage.setLastUsedChatModality('editor')
                 const panel = await this.getOrCreateEditorChatController()
 
@@ -179,59 +170,44 @@ export class ChatsController implements vscode.Disposable {
                     if (contextItems?.length) {
                         await panel.addContextItemsToLastHumanInput(contextItems)
                     }
-                } catch {}
+                } catch (error) {
+                    logError(
+                        'ChatsController:newEditorPanel',
+                        'Error adding context items to last human input in new editor panel',
+                        error
+                    )
+                }
 
                 return panel
             }),
-            vscode.commands.registerCommand('cody.chat.new', async args => {
+            vscode.commands.registerCommand('driver-ai.chat.new', async args => {
                 switch (getNewChatLocation()) {
                     case 'editor':
-                        return vscode.commands.executeCommand('cody.chat.newEditorPanel', args)
+                        return vscode.commands.executeCommand('driver-ai.chat.newEditorPanel', args)
                     case 'sidebar':
-                        return vscode.commands.executeCommand('cody.chat.newPanel', args)
+                        return vscode.commands.executeCommand('driver-ai.chat.newPanel', args)
                 }
             }),
 
-            vscode.commands.registerCommand('cody.chat.toggle', async () => this.toggleChatPanel()),
-            vscode.commands.registerCommand('cody.chat.history.export', () => this.exportHistory()),
-            vscode.commands.registerCommand('cody.chat.history.clear', arg => this.clearHistory(arg)),
-            vscode.commands.registerCommand('cody.chat.history.delete', item => this.clearHistory(item)),
-            vscode.commands.registerCommand('cody.chat.panel.restore', restoreToEditor),
-            vscode.commands.registerCommand(CODY_PASSTHROUGH_VSCODE_OPEN_COMMAND_ID, (...args) =>
+            vscode.commands.registerCommand('driver-ai.chat.toggle', async () => this.toggleChatPanel()),
+            vscode.commands.registerCommand('driver-ai.chat.history.export', () => this.exportHistory()),
+            vscode.commands.registerCommand('driver-ai.chat.history.clear', arg =>
+                this.clearHistory(arg)
+            ),
+            vscode.commands.registerCommand('driver-ai.chat.history.delete', item =>
+                this.clearHistory(item)
+            ),
+            vscode.commands.registerCommand('driver-ai.chat.panel.restore', restoreToEditor),
+            vscode.commands.registerCommand(DRIVER_PASSTHROUGH_VSCODE_OPEN_COMMAND_ID, (...args) =>
                 this.passthroughVsCodeOpen(...args)
             ),
-            vscode.commands.registerCommand('cody.show.lastUsedActions', async () => {
-                this.panel.clientBroadcast.next({ type: 'open-recently-prompts' })
-            }),
 
             // Mention selection/file commands
-            vscode.commands.registerCommand('cody.mention.selection', uri =>
+            vscode.commands.registerCommand('driver-ai.mention.selection', uri =>
                 this.sendEditorContextToChat(uri)
             ),
-            vscode.commands.registerCommand('cody.mention.file', uri =>
+            vscode.commands.registerCommand('driver-ai.mention.file', uri =>
                 this.sendEditorContextToChat(uri)
-            ),
-
-            // Codeblock commands
-            vscode.commands.registerCommand(
-                'cody.command.markSmartApplyApplied',
-                (result: SmartApplyResult) => this.sendSmartApplyResultToChat(result)
-            ),
-            vscode.commands.registerCommand(
-                'cody.command.insertCodeToCursor',
-                (args: { text: string }) => {
-                    const text =
-                        // Used in E2E tests where OS-native buttons dropdown is inaccessible.
-                        process.env.CODY_TESTING === 'true'
-                            ? 'cody.command.insertCodeToCursor:cody_testing'
-                            : args.text
-
-                    return handleCodeFromInsertAtCursor(text)
-                }
-            ),
-            vscode.commands.registerCommand(
-                'cody.command.insertCodeToNewFile',
-                (args: { text: string }) => handleCodeFromSaveToNewFile(args.text, this.options.editor)
             )
         )
     }
@@ -250,29 +226,18 @@ export class ChatsController implements vscode.Disposable {
             return
         }
         await Promise.all([
-            this.panel.restoreSession(sessionID),
+            // this.panel.restoreSession(sessionID),
             vscode.commands.executeCommand('workbench.action.closeActiveEditor'),
         ])
-        await vscode.commands.executeCommand('cody.chat.focus')
+        await vscode.commands.executeCommand('driver-ai.chat.focus')
     }
 
     private async sendEditorContextToChat(uri?: URI): Promise<void> {
-        telemetryRecorder.recordEvent('cody.addChatContext', 'clicked', {
-            billingMetadata: {
-                category: 'billable',
-                product: 'cody',
-            },
-        })
         const provider = await this.getActiveChatController()
         if (provider === this.panel) {
-            await vscode.commands.executeCommand('cody.chat.focus')
+            await vscode.commands.executeCommand('driver-ai.chat.focus')
         }
         await provider.handleGetUserEditorContext(uri)
-    }
-
-    private async sendSmartApplyResultToChat(result: SmartApplyResult): Promise<void> {
-        const provider = await this.getActiveChatController()
-        await provider.handleSmartApplyResult(result)
     }
 
     /**
@@ -296,7 +261,7 @@ export class ChatsController implements vscode.Disposable {
     }
 
     /**
-     * See docstring for {@link CODY_PASSTHROUGH_VSCODE_OPEN_COMMAND_ID}.
+     * See docstring for {@link DRIVER_PASSTHROUGH_VSCODE_OPEN_COMMAND_ID}.
      */
     private async passthroughVsCodeOpen(...args: unknown[]): Promise<void> {
         if (args[1] && (args[1] as any).viewColumn === vscode.ViewColumn.Beside) {
@@ -364,18 +329,12 @@ export class ChatsController implements vscode.Disposable {
      * Export chat history to file system
      */
     private async exportHistory(): Promise<void> {
-        telemetryRecorder.recordEvent('cody.exportChatHistoryButton', 'clicked', {
-            billingMetadata: {
-                product: 'cody',
-                category: 'billable',
-            },
-        })
         const authStatus = currentAuthStatus()
         if (authStatus.authenticated) {
             try {
                 const historyJson = chatHistory.getLocalHistory(authStatus)
                 const exportPath = await vscode.window.showSaveDialog({
-                    title: 'Cody: Export Chat History',
+                    title: 'Driver: Export Chat History',
                     filters: { 'Chat History': ['json'] },
                 })
                 if (!exportPath || !historyJson) {
@@ -437,11 +396,6 @@ export class ChatsController implements vscode.Disposable {
         chatQuestion?: string,
         panel?: vscode.WebviewPanel
     ): Promise<ChatController> {
-        // For clients without editor chat panels support, always use the sidebar panel.
-        const isSidebarOnly = this.extensionClient.capabilities?.webviewNativeConfig?.view === 'single'
-        if (isSidebarOnly) {
-            return this.panel
-        }
         // Look for an existing editor with the same chatID
         if (chatID && this.editors.map(p => p.sessionID).includes(chatID)) {
             const provider = this.editors.find(p => p.sessionID === chatID)
@@ -501,9 +455,6 @@ export class ChatsController implements vscode.Disposable {
     private createChatController(): ChatController {
         return new ChatController({
             ...this.options,
-            chatClient: this.chatClient,
-            guardrails: this.guardrails,
-            startTokenReceiver: this.options.startTokenReceiver,
             contextRetriever: this.contextRetriever,
             extensionClient: this.extensionClient,
         })
@@ -543,7 +494,9 @@ export class ChatsController implements vscode.Disposable {
             }
         } else {
             await vscode.commands.executeCommand(
-                this.panel.isVisible() ? 'workbench.action.toggleSidebarVisibility' : 'cody.chat.focus'
+                this.panel.isVisible()
+                    ? 'workbench.action.toggleSidebarVisibility'
+                    : 'driver-ai.chat.focus'
             )
         }
     }
@@ -567,7 +520,6 @@ export class ChatsController implements vscode.Disposable {
 
     public dispose(): void {
         this.disposeAllChats()
-        CodyToolProvider.dispose()
         vscode.Disposable.from(...this.disposables).dispose()
     }
 }
@@ -576,7 +528,7 @@ function getNewChatLocation(): ChatLocation {
     const chatDefaultLocation =
         vscode.workspace
             .getConfiguration()
-            .get<'sticky' | 'sidebar' | 'editor'>('cody.chat.defaultLocation') ?? 'sticky'
+            .get<'sticky' | 'sidebar' | 'editor'>('driver-ai.chat.defaultLocation') ?? 'sticky'
 
     if (chatDefaultLocation === 'sticky') {
         return localStorage.getLastUsedChatModality()

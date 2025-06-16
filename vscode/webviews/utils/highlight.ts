@@ -1,3 +1,4 @@
+// cspell:ignore arduino bash clojure cpp csharp css dart delphi diff dockerfile elixir fortran go graphql groovy haskell http ini java javascript json jsonc kotlin less lua makefile markdown matlab nix objectivec ocaml perl php phpTemplate plaintext python pythonRepl r ruby rust scala scss shell sql swift typescript vbnet verilog vhdl wasm xml yaml
 import arduino from 'highlight.js/lib/languages/arduino'
 import bash from 'highlight.js/lib/languages/bash'
 import c from 'highlight.js/lib/languages/c'

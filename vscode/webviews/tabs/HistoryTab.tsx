@@ -1,6 +1,6 @@
 ;('use client')
 
-import { CodyIDE, type WebviewToExtensionAPI } from '@sourcegraph/cody-shared'
+import { DriverIDE, type WebviewToExtensionAPI } from '@sourcegraph/cody-shared'
 import type { LightweightChatTranscript } from '@sourcegraph/cody-shared/src/chat/transcript'
 import { DownloadIcon, HistoryIcon, MessageSquarePlusIcon, Trash2Icon, TrashIcon } from 'lucide-react'
 import type React from 'react'
@@ -17,7 +17,7 @@ import { View } from './types'
 import { getCreateNewChatCommand } from './utils'
 
 interface HistoryTabProps {
-    IDE: CodyIDE
+    IDE: DriverIDE
     setView: (view: View) => void
     webviewType?: WebviewType | undefined | null
     multipleWebviewsEnabled?: boolean | undefined | null
@@ -110,7 +110,7 @@ export const HistoryTabWithData: React.FC<HistoryTabProps & { chats: Lightweight
             // Send the delete command to the extension
             vscodeAPI.postMessage({
                 command: 'command',
-                id: 'cody.chat.history.clear',
+                id: 'driver-ai.chat.history.clear',
                 arg: id,
             })
 
@@ -216,8 +216,8 @@ export const HistoryTabWithData: React.FC<HistoryTabProps & { chats: Lightweight
                 </span>
 
                 <span className="tw-text-sm tw-text-muted-foreground tw-mb-8 tw-text-center">
-                    Explore all your previous chats here. Track and <br /> search through what you've
-                    been working on.
+                    Explore all your previous chats here. Track and <br /> search through what
+                    you&apos;ve been working on.
                 </span>
                 <Button
                     size="sm"
@@ -246,7 +246,7 @@ export const HistoryTabWithData: React.FC<HistoryTabProps & { chats: Lightweight
             className="tw-flex tw-flex-col tw-h-full tw-py-4 tw-bg-transparent tw-px-2 tw-mb-4 tw-overscroll-auto"
             disablePointerSelection={true}
         >
-            {IDE !== CodyIDE.Web && (
+            {IDE !== DriverIDE.Web && (
                 <header className="tw-inline-flex tw-mt-4 tw-px-4 tw-gap-4">
                     <Button
                         variant="secondary"

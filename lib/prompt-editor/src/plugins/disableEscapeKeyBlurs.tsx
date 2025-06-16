@@ -17,18 +17,18 @@ export const DisableEscapeKeyBlursPlugin: FunctionComponent = () => {
         // has changed, and if so, you can probably remove this plugin.
         const escListeners = editor._commands.get(KEY_ESCAPE_COMMAND)
         if (!escListeners) {
-            console.log('DisableEscapeKeyBlursPlugin: no listeners registered for Escape key.')
+            console.warn('DisableEscapeKeyBlursPlugin: no listeners registered for Escape key.')
             return
         }
         const editorEscListener = escListeners.at(COMMAND_PRIORITY_EDITOR)
         if (!editorEscListener) {
-            console.log(
+            console.warn(
                 'DisableEscapeKeyBlursPlugin: no COMMAND_PRIORITY_EDITOR listener registered for Escape key.'
             )
             return
         }
         if (editorEscListener.size !== 1) {
-            console.log(
+            console.warn(
                 'DisableEscapeKeyBlursPlugin: unexpectedly more than one listener registered for Escape key.'
             )
             return

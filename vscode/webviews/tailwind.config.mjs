@@ -1,4 +1,6 @@
 /** @type {import('tailwindcss').Config} */
+// cspell:ignore autoedit drivericons
+import typography from '@tailwindcss/typography'
 import plugin from 'tailwindcss/plugin'
 
 export default {
@@ -35,6 +37,7 @@ export default {
                 4: '8px',
                 5: '10px',
                 6: '12px',
+                7: '14px',
                 8: '16px',
                 10: '20px',
                 11: '22px',
@@ -53,10 +56,15 @@ export default {
                 ring: 'var(--vscode-focusBorder)',
                 background: 'var(--vscode-editor-background)',
                 foreground: 'var(--vscode-foreground)',
+                icon: {
+                    foreground: 'var(--vscode-icon-foreground)',
+                    background: 'var(--vscode-icon-background)',
+                    border: 'var(--vscode-icon-border)',
+                },
                 input: {
                     foreground: 'var(--vscode-input-foreground)',
                     background: 'var(--vscode-input-background)',
-                    border: 'var(--vscode-input-border)',
+                    border: 'var(--vscode-input-border, transparent)',
                 },
                 button: {
                     background: {
@@ -116,10 +124,14 @@ export default {
                     background: 'var(--code-background)',
                     foreground: 'var(--code-foreground)',
                 },
-                sourcegraph: {
+                driver: {
                     blue: '#00CBEC',
                     purple: '#A112FF',
                     orange: '#FF5543',
+                },
+                'status-bar-item-remote': {
+                    background: 'var(--vscode-statusBarItem-remoteBackground)',
+                    foreground: 'var(--vscode-statusBarItem-remoteForeground)',
                 },
             },
             borderRadius: {
@@ -144,6 +156,10 @@ export default {
                     from: { height: 'var(--radix-collapsible-content-height)' },
                     to: { height: '0' },
                 },
+                loading: {
+                    '0%, 100%': { opacity: '0.2' },
+                    '50%': { opacity: '1' },
+                },
             },
             animation: {
                 'accordion-down': 'accordion-down 0.15s ease-out',
@@ -151,9 +167,49 @@ export default {
                 'collapsible-down': 'collapsible-down 0.15s ease-out',
                 'collapsible-up': 'collapsible-up 0.15s ease-out',
             },
+            typography: {
+                DEFAULT: {
+                    css: {
+                        '--tw-prose-body': 'var(--vscode-interactive-session-foreground)',
+                        '--tw-prose-headings': 'var(--vscode-interactive-session-foreground)',
+                        '--tw-prose-lead': 'var(--vscode-interactive-session-foreground)',
+                        '--tw-prose-links': 'var(--vscode-textLink-foreground)',
+                        '--tw-prose-bold': 'var(--vscode-interactive-session-foreground)',
+                        '--tw-prose-counters': 'var(--vscode-interactive-session-foreground)',
+                        '--tw-prose-bullets': 'var(--vscode-interactive-session-foreground)',
+                        '--tw-prose-hr': 'var(--vscode-interactive-session-foreground)',
+                        '--tw-prose-quotes': 'var(--vscode-interactive-session-foreground)',
+                        '--tw-prose-quote-borders': 'var(--vscode-interactive-session-foreground)',
+                        '--tw-prose-captions': 'var(--vscode-interactive-session-foreground)',
+                        '--tw-prose-code': 'var(--vscode-textPreformat-foreground)',
+                        '--tw-prose-pre-code': 'var(--vscode-interactive-session-foreground)',
+                        '--tw-prose-pre-bg': 'var(--vscode-interactive-session-background)',
+                        '--tw-prose-th-borders': 'var(--vscode-interactive-session-foreground)',
+                        '--tw-prose-td-borders': 'var(--vscode-interactive-session-foreground)',
+                        // '--tw-prose-invert-body': 'var(--color-pink-200)',
+                        // '--tw-prose-invert-headings': 'var(--color-white)',
+                        // '--tw-prose-invert-lead': 'var(--color-pink-300)',
+                        // '--tw-prose-invert-links': 'var(--color-white)',
+                        // '--tw-prose-invert-bold': 'var(--color-white)',
+                        // '--tw-prose-invert-counters': 'var(--color-pink-400)',
+                        // '--tw-prose-invert-bullets': 'var(--color-pink-600)',
+                        // '--tw-prose-invert-hr': 'var(--color-pink-700)',
+                        // '--tw-prose-invert-quotes': 'var(--color-pink-100)',
+                        // '--tw-prose-invert-quote-borders': 'var(--color-pink-700)',
+                        // '--tw-prose-invert-captions': 'var(--color-pink-400)',
+                        // '--tw-prose-invert-code': 'var(--color-white)',
+                        // '--tw-prose-invert-pre-code': 'var(--color-pink-300)',
+                        // '--tw-prose-invert-pre-bg': 'rgb(0 0 0 / 50%)',
+                        // '--tw-prose-invert-th-borders': 'var(--color-pink-600)',
+                        // '--tw-prose-invert-td-borders': 'var(--color-pink-700)',
+                        color: 'var(--vscode-interactive-session-foreground)',
+                    },
+                },
+            },
         },
     },
     plugins: [
+        typography,
         plugin(({ addVariant }) => {
             // Allows use to customize styling for VS Code light and dark themes
             addVariant('high-contrast-dark', 'body[data-vscode-theme-kind="vscode-high-contrast"] &')

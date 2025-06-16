@@ -17,7 +17,7 @@ export interface PromptEditorConfig {
                 | 'secondary'
                 | 'outline'
                 | 'ghost'
-                | 'cody'
+                | 'driver'
                 | 'warning'
                 | 'info'
                 | 'error'

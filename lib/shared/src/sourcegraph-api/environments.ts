@@ -1,16 +1,16 @@
-// `CODY_OVERRIDE_DOTCOM_URL` is not set in webviews. If `isDotCom` helper it called from the webview it will use
+// `DRIVER_OVERRIDE_DOTCOM_URL` is not set in webviews. If `isDotCom` helper it called from the webview it will use
 
-import type { AuthStatus } from '../auth/types'
 import { cenv } from '../configuration/environment'
 
 // the default ('https://sourcegraph.com') value.
-export const DOTCOM_URL = new URL(cenv.CODY_OVERRIDE_DOTCOM_URL || 'https://sourcegraph.com/')
+export const DOTCOM_URL = new URL(cenv.DRIVER_OVERRIDE_DOTCOM_URL || 'https://sourcegraph.com/')
 
 // 🚨 SECURITY: This is used as a check for logging chatTranscript for dotcom users only, be extremely careful if modifying this function
-export function isDotCom(authStatus: Pick<AuthStatus, 'endpoint'> | undefined): boolean
+// export function isDotCom(authStatus: Pick<AuthStatus, 'endpoint'> | undefined): boolean
 export function isDotCom(url: string): boolean
-export function isDotCom(arg: Pick<AuthStatus, 'endpoint'> | undefined | string): boolean {
-    const url = typeof arg === 'string' ? arg : arg?.endpoint
+export function isDotCom(arg: undefined | string): boolean {
+    // const url = typeof arg === 'string' ? arg : arg?.endpoint
+    const url = arg
     if (url === undefined) {
         return false
     }
@@ -24,10 +24,11 @@ export function isDotCom(arg: Pick<AuthStatus, 'endpoint'> | undefined | string)
 export const S2_URL = new URL('https://sourcegraph.sourcegraph.com/')
 
 // 🚨 SECURITY: This is used as a check for logging chatTranscript for S2 users only, be extremely careful if modifying this function
-export function isS2(authStatus: Pick<AuthStatus, 'endpoint'> | undefined): boolean
+// export function isS2(authStatus: Pick<AuthStatus, 'endpoint'> | undefined): boolean
 export function isS2(url: string): boolean
-export function isS2(arg: Pick<AuthStatus, 'endpoint'> | undefined | string): boolean {
-    const url = typeof arg === 'string' ? arg : arg?.endpoint
+export function isS2(arg: undefined | string): boolean {
+    // const url = typeof arg === 'string' ? arg : arg?.endpoint
+    const url = arg
     if (url === undefined) {
         return false
     }
@@ -47,10 +48,11 @@ const Workspaces_Host_Local = '.sourcegraphapp.test:3443'
 
 // 🚨 SECURITY: This is used to validate a set of URLs we will allow to be passed in
 //              to the editor in the URL handler.
-export function isWorkspaceInstance(authStatus: Pick<AuthStatus, 'endpoint'> | undefined): boolean
+// export function isWorkspaceInstance(authStatus: Pick<AuthStatus, 'endpoint'> | undefined): boolean
 export function isWorkspaceInstance(url: string): boolean
-export function isWorkspaceInstance(arg: Pick<AuthStatus, 'endpoint'> | undefined | string): boolean {
-    const url = typeof arg === 'string' ? arg : arg?.endpoint
+export function isWorkspaceInstance(arg: undefined | string): boolean {
+    // const url = typeof arg === 'string' ? arg : arg?.endpoint
+    const url = arg
     if (url === undefined) {
         return false
     }

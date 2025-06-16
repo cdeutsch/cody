@@ -3,7 +3,6 @@ import {
     type ContextItem,
     ContextItemSource,
     TokenCounterUtils,
-    contextFiltersProvider,
     logError,
     toRangeData,
     wrapInActiveSpan,
@@ -20,9 +19,9 @@ export async function getContextFileFromUri(
 ): Promise<ContextItem | null> {
     return wrapInActiveSpan('commands.context.filePath', async span => {
         try {
-            if (await contextFiltersProvider.isUriIgnored(file)) {
-                return null
-            }
+            // if (await contextFiltersProvider.isUriIgnored(file)) {
+            //   return null;
+            // }
 
             const doc = await vscode.workspace.openTextDocument(file)
 
@@ -76,9 +75,9 @@ export async function getContextFromRelativePath(path: string): Promise<ContextI
         if (!file.fsPath.startsWith(currentWorkspaceURI.fsPath + sep)) {
             throw new Error('Path traversal detected')
         }
-        if (await contextFiltersProvider.isUriIgnored(file)) {
-            return null
-        }
+        // if (await contextFiltersProvider.isUriIgnored(file)) {
+        //   return null;
+        // }
         const doc = await vscode.workspace.openTextDocument(file)
         const content = doc.getText()
         if (!content.trim()) {

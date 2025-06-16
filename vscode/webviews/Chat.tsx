@@ -1,53 +1,49 @@
 import type { Context } from '@opentelemetry/api'
 import type React from 'react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
-import {
-    type AuthenticatedAuthStatus,
-    type ChatMessage,
-    CodyIDE,
-    type Guardrails,
-    type Model,
-    type PromptString,
+import type {
+    AuthenticatedAuthStatus,
+    ChatMessage,
+    DriverIDE,
+    PrimaryAssetRecord,
 } from '@sourcegraph/cody-shared'
 
 import styles from './Chat.module.css'
 import { Transcript, focusLastHumanMessageEditor } from './chat/Transcript'
-import { WelcomeMessage } from './chat/components/WelcomeMessage'
-import { WelcomeNotice } from './chat/components/WelcomeNotice'
 import { ScrollDown } from './components/ScrollDown'
 import type { View } from './tabs'
 import type { VSCodeWrapper } from './utils/VSCodeApi'
-import { SpanManager } from './utils/spanManager'
-import { getTraceparentFromSpanContext } from './utils/telemetry'
 import { useUserAccountInfo } from './utils/useConfig'
 
 interface ChatboxProps {
     chatEnabled: boolean
     messageInProgress: ChatMessage | null
     transcript: ChatMessage[]
-    models: Model[]
     vscodeAPI: Pick<VSCodeWrapper, 'postMessage' | 'onMessage'>
-    guardrails: Guardrails
     scrollableParent?: HTMLElement | null
     showWelcomeMessage?: boolean
     showIDESnippetActions?: boolean
     setView: (view: View) => void
     isWorkspacesUpgradeCtaEnabled?: boolean
+    primaryAsset?: PrimaryAssetRecord
+    primaryAssetLoaded?: boolean
+    chatID?: string
 }
 
 export const Chat: React.FunctionComponent<React.PropsWithChildren<ChatboxProps>> = ({
     messageInProgress,
     transcript,
-    models,
     vscodeAPI,
     chatEnabled = true,
-    guardrails,
     scrollableParent,
     showWelcomeMessage = true,
     showIDESnippetActions = true,
     setView,
     isWorkspacesUpgradeCtaEnabled,
+    primaryAsset,
+    primaryAssetLoaded,
+    chatID,
 }) => {
     const transcriptRef = useRef(transcript)
     transcriptRef.current = transcript
@@ -70,81 +66,6 @@ export const Chat: React.FunctionComponent<React.PropsWithChildren<ChatboxProps>
         },
         [vscodeAPI]
     )
-
-    const insertButtonOnSubmit = useMemo(() => {
-        if (showIDESnippetActions) {
-            return (text: string, newFile = false) => {
-                const op = newFile ? 'newFile' : 'insert'
-                // Log the event type and text to telemetry in chat view
-
-                vscodeAPI.postMessage({
-                    command: op,
-                    // remove the additional /n added by the text area at the end of the text
-                    text: text.replace(/\n$/, ''),
-                })
-            }
-        }
-
-        return
-    }, [vscodeAPI, showIDESnippetActions])
-
-    const smartApply = useMemo(() => {
-        if (!showIDESnippetActions) {
-            return
-        }
-
-        function onSubmit({
-            id,
-            text,
-            instruction,
-            fileName,
-            isPrefetch,
-        }: {
-            id: string
-            text: string
-            isPrefetch?: boolean
-            instruction?: PromptString
-            fileName?: string
-        }) {
-            const command = isPrefetch ? 'smartApplyPrefetch' : 'smartApplySubmit'
-
-            const spanManager = new SpanManager('cody-webview')
-            const span = spanManager.startSpan(command, {
-                attributes: {
-                    sampled: true,
-                    'smartApply.id': id,
-                },
-            })
-            const traceparent = getTraceparentFromSpanContext(span.spanContext())
-
-            vscodeAPI.postMessage({
-                command,
-                id,
-                instruction: instruction?.toString(),
-                // remove the additional /n added by the text area at the end of the text
-                code: text.replace(/\n$/, ''),
-                fileName,
-                traceparent,
-            })
-            span.end()
-        }
-
-        return {
-            onSubmit,
-            onAccept: (id: string) => {
-                vscodeAPI.postMessage({
-                    command: 'smartApplyAccept',
-                    id,
-                })
-            },
-            onReject: (id: string) => {
-                vscodeAPI.postMessage({
-                    command: 'smartApplyReject',
-                    id,
-                })
-            },
-        }
-    }, [vscodeAPI, showIDESnippetActions])
 
     const postMessage = useCallback<ApiPostMessage>(msg => vscodeAPI.postMessage(msg), [vscodeAPI])
 
@@ -170,7 +91,7 @@ export const Chat: React.FunctionComponent<React.PropsWithChildren<ChatboxProps>
     }, [vscodeAPI, messageInProgress])
 
     // Re-focus the input when the webview (re)gains focus if it was focused before the webview lost
-    // focus. This makes it so that the user can easily switch back to the Cody view and keep
+    // focus. This makes it so that the user can easily switch back to the Driver view and keep
     // typing.
     useEffect(() => {
         const onFocus = (): void => {
@@ -204,35 +125,30 @@ export const Chat: React.FunctionComponent<React.PropsWithChildren<ChatboxProps>
 
     return (
         <>
-            {!chatEnabled && (
-                <div className={styles.chatDisabled}>
-                    Cody chat is disabled by your Sourcegraph site administrator
-                </div>
-            )}
+            {!chatEnabled && <div className={styles.chatDisabled}>Driver chat is disabled.</div>}
             <Transcript
                 activeChatContext={activeChatContext}
                 setActiveChatContext={setActiveChatContext}
                 transcript={transcript}
-                models={models}
                 messageInProgress={messageInProgress}
                 copyButtonOnSubmit={copyButtonOnSubmit}
-                insertButtonOnSubmit={insertButtonOnSubmit}
-                smartApply={smartApply}
                 userInfo={userInfo}
                 chatEnabled={chatEnabled}
                 postMessage={postMessage}
-                guardrails={guardrails}
+                primaryAsset={primaryAsset}
+                primaryAssetLoaded={primaryAssetLoaded}
+                chatID={chatID}
             />
-            {transcript.length === 0 && showWelcomeMessage && (
+            {/* {transcript.length === 0 && showWelcomeMessage && (
                 <>
                     <WelcomeMessage IDE={userInfo.IDE} setView={setView} />
-                    {isWorkspacesUpgradeCtaEnabled && userInfo.IDE !== CodyIDE.Web && (
+                    {isWorkspacesUpgradeCtaEnabled && userInfo.IDE !== DriverIDE.Web && (
                         <div className="tw-absolute tw-bottom-0 tw-left-1/2 tw-transform tw--translate-x-1/2 tw-w-[95%] tw-z-1 tw-mb-4 tw-max-h-1/2">
                             <WelcomeNotice />
                         </div>
                     )}
                 </>
-            )}
+            )} */}
 
             {scrollableParent && (
                 <ScrollDown scrollableParent={scrollableParent} onClick={handleScrollDownClick} />
@@ -242,13 +158,8 @@ export const Chat: React.FunctionComponent<React.PropsWithChildren<ChatboxProps>
 }
 
 export interface UserAccountInfo {
-    isDotComUser: boolean
-    isCodyProUser: boolean
-    user: Pick<
-        AuthenticatedAuthStatus,
-        'username' | 'displayName' | 'avatarURL' | 'endpoint' | 'primaryEmail' | 'organizations'
-    >
-    IDE: CodyIDE
+    user: Pick<AuthenticatedAuthStatus, 'user'>
+    IDE: DriverIDE
 }
 
 export type ApiPostMessage = (message: any) => void

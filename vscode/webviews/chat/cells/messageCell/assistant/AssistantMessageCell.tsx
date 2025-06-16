@@ -1,11 +1,6 @@
 import {
     type ChatMessage,
-    type ChatMessageWithSearch,
     ContextItemSource,
-    type Guardrails,
-    type Model,
-    ModelTag,
-    type NLSSearchDynamicFilter,
     type PromptString,
     contextItemsFromPromptEditorValue,
     filterContextItemsFromPromptEditorValue,
@@ -13,12 +8,10 @@ import {
     reformatBotMessageForChat,
     serializedPromptEditorStateFromChatMessage,
 } from '@sourcegraph/cody-shared'
-import { DeepCodyAgentID } from '@sourcegraph/cody-shared/src/models/client'
 import type { PromptEditorRefAPI } from '@sourcegraph/prompt-editor'
 import isEqual from 'lodash/isEqual'
 import { type FunctionComponent, type RefObject, memo, useMemo } from 'react'
 import type { ApiPostMessage, UserAccountInfo } from '../../../../Chat'
-import { useOmniBox } from '../../../../utils/useOmniBox'
 import {
     ChatMessageContent,
     type CodeBlockActionsProps,
@@ -29,7 +22,6 @@ import { CopyButton } from '../../../ChatMessageContent/EditButtons'
 import { ErrorItem, RequestErrorItem } from '../../../ErrorItem'
 import { type Interaction, editHumanMessage } from '../../../Transcript'
 import { BaseMessageCell } from '../BaseMessageCell'
-import { SearchResults } from './SearchResults'
 import { SubMessageCell } from './SubMessageCell'
 
 /**
@@ -37,7 +29,6 @@ import { SubMessageCell } from './SubMessageCell'
  */
 export const AssistantMessageCell: FunctionComponent<{
     message: ChatMessage
-    models: Model[]
     /** Information about the human message that led to this assistant response. */
     humanMessage: PriorHumanMessageInfo | null
 
@@ -47,33 +38,21 @@ export const AssistantMessageCell: FunctionComponent<{
 
     copyButtonOnSubmit?: CodeBlockActionsProps['copyButtonOnSubmit']
     insertButtonOnSubmit?: CodeBlockActionsProps['insertButtonOnSubmit']
-    onRegenerate: CodeBlockActionsProps['onRegenerate']
-    regeneratingCodeBlocks: CodeBlockActionsProps['regeneratingCodeBlocks']
-
-    smartApply?: CodeBlockActionsProps['smartApply']
 
     isThoughtProcessOpened?: boolean
     setThoughtProcessOpened?: (open: boolean) => void
 
     postMessage?: ApiPostMessage
-    guardrails: Guardrails
-    onSelectedFiltersUpdate: (filters: NLSSearchDynamicFilter[]) => void
     isLastSentInteraction: boolean
 }> = memo(
     ({
         message,
-        models,
         humanMessage,
         userInfo,
         isLoading,
         copyButtonOnSubmit,
         insertButtonOnSubmit,
-        onRegenerate,
-        regeneratingCodeBlocks,
         postMessage,
-        guardrails,
-        smartApply,
-        onSelectedFiltersUpdate,
         isLastSentInteraction: isLastInteraction,
         isThoughtProcessOpened,
         setThoughtProcessOpened,
@@ -82,12 +61,11 @@ export const AssistantMessageCell: FunctionComponent<{
             () => (message.text ? reformatBotMessageForChat(message.text).toString() : ''),
             [message.text]
         )
-        const chatModel = useChatModelByID(message.model, models)
         const isAborted = isAbortErrorOrSocketHangUp(message.error)
 
-        const hasLongerResponseTime = chatModel?.tags?.includes(ModelTag.StreamDisabled)
+        const hasLongerResponseTime = false
 
-        const omniboxEnabled = useOmniBox()
+        const omniboxEnabled = false
 
         const isSearchIntent = omniboxEnabled && humanMessage?.intent === 'search'
 
@@ -101,18 +79,10 @@ export const AssistantMessageCell: FunctionComponent<{
                             ) : (
                                 <ErrorItem
                                     error={message.error}
-                                    userInfo={userInfo}
                                     postMessage={postMessage}
                                     humanMessage={humanMessage}
                                 />
                             )
-                        ) : null}
-                        {omniboxEnabled && !isLoading && message.search ? (
-                            <SearchResults
-                                message={message as ChatMessageWithSearch}
-                                onSelectedFiltersUpdate={onSelectedFiltersUpdate}
-                                enableContextSelection={isLastInteraction}
-                            />
                         ) : null}
                         {!isSearchIntent && displayMarkdown ? (
                             <ChatMessageContent
@@ -120,11 +90,7 @@ export const AssistantMessageCell: FunctionComponent<{
                                 isMessageLoading={isLoading}
                                 copyButtonOnSubmit={copyButtonOnSubmit}
                                 insertButtonOnSubmit={insertButtonOnSubmit}
-                                onRegenerate={onRegenerate}
-                                regeneratingCodeBlocks={regeneratingCodeBlocks}
-                                guardrails={guardrails}
                                 humanMessage={humanMessage}
-                                smartApply={smartApply}
                                 isThoughtProcessOpened={!!isThoughtProcessOpened}
                                 setThoughtProcessOpened={setThoughtProcessOpened}
                             />
@@ -135,7 +101,8 @@ export const AssistantMessageCell: FunctionComponent<{
                                     {hasLongerResponseTime && (
                                         <p className="tw-m-4 tw-mt-0 tw-text-muted-foreground">
                                             This model may take longer to respond because it takes time
-                                            to "think". Recommended for complex reasoning & coding tasks.
+                                            to &quot;think&quot;. Recommended for complex reasoning &amp;
+                                            coding tasks.
                                         </p>
                                     )}
                                 </div>
@@ -148,9 +115,6 @@ export const AssistantMessageCell: FunctionComponent<{
                                     // biome-ignore lint/suspicious/noArrayIndexKey:
                                     key={`piece-${i}`}
                                     piece={piece}
-                                    guardrails={guardrails}
-                                    onRegenerate={onRegenerate}
-                                    regeneratingCodeBlocks={regeneratingCodeBlocks}
                                 />
                             ))}
                     </>
@@ -165,7 +129,7 @@ export const AssistantMessageCell: FunctionComponent<{
                             </div>
                         )}
                         <div
-                            className={`tw-flex tw-items-center tw-justify-end tw-gap-4  ${styles.buttonsContainer}`}
+                            className={`tw-flex tw-items-center tw-justify-end tw-gap-4 ${styles.buttonsContainer}`}
                         >
                             {!isLoading && (!message.error || isAborted) && !isSearchIntent && (
                                 <>
@@ -186,6 +150,8 @@ export const AssistantMessageCell: FunctionComponent<{
     },
     isEqual
 )
+
+AssistantMessageCell.displayName = 'AssistantMessageCell'
 
 export interface HumanMessageInitialContextInfo {
     repositories: boolean
@@ -251,21 +217,4 @@ export function makeHumanMessageInfo(
             }
         },
     }
-}
-
-function useChatModelByID(
-    model: string | undefined,
-    chatModels: Model[]
-): Pick<Model, 'id' | 'title' | 'provider' | 'tags'> | undefined {
-    return (
-        chatModels?.find(m => m.id === model) ??
-        (model
-            ? {
-                  id: model,
-                  title: model?.includes(DeepCodyAgentID) ? 'Deep Cody (Experimental)' : model,
-                  provider: 'unknown',
-                  tags: [],
-              }
-            : undefined)
-    )
 }

@@ -1,17 +1,12 @@
-import type { Guardrails } from '@sourcegraph/cody-shared'
 import type { SubMessage } from '@sourcegraph/cody-shared/src/chat/transcript/messages'
 import { WrenchIcon } from 'lucide-react'
 import type { FunctionComponent } from 'react'
 import { ChatMessageContent } from '../../../ChatMessageContent/ChatMessageContent'
-import type { RegeneratingCodeBlockState } from '../../../Transcript'
 import styles from './SubMessageCell.module.css'
 
 export const SubMessageCell: FunctionComponent<{
     piece: SubMessage
-    guardrails: Guardrails
-    onRegenerate: (code: string, language: string | undefined) => void
-    regeneratingCodeBlocks: RegeneratingCodeBlockState[]
-}> = ({ piece, guardrails, onRegenerate, regeneratingCodeBlocks }) => {
+}> = ({ piece }) => {
     return (
         <>
             {piece.text && (
@@ -19,9 +14,6 @@ export const SubMessageCell: FunctionComponent<{
                     displayMarkdown={piece.text.toString()}
                     isMessageLoading={false}
                     humanMessage={null}
-                    guardrails={guardrails}
-                    onRegenerate={onRegenerate}
-                    regeneratingCodeBlocks={regeneratingCodeBlocks}
                 />
             )}
 

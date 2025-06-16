@@ -44,7 +44,7 @@ export interface MentionQuery {
     /**
      * To control source of standard mention suggestions (files and symbols),
      * search API will try to find suggestions across remote repositories
-     * user has on their instance. (Cody Web use case)
+     * user has on their instance. (Driver Web use case)
      */
     contextRemoteRepositoriesNames?: string[]
 }

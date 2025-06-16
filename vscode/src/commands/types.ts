@@ -1,4 +1,4 @@
-import type { CodyCommand, ContextItem, EventSource, PromptString } from '@sourcegraph/cody-shared'
+import type { ContextItem, DriverCommand, EventSource, PromptString } from '@sourcegraph/cody-shared'
 
 import type { Range, Uri } from 'vscode'
 import type { ExecuteEditArguments } from '../edit/execute'
@@ -15,16 +15,16 @@ export enum ConfigFiles {
 }
 
 /**
- * Creates a CodyCommandArgs object with default values.
+ * Creates a DriverCommandArgs object with default values.
  * Generates a random requestID if one is not provided.
  * Merges any provided args with the defaults.
  */
-export interface CodyCommandsFile {
+export interface DriverCommandsFile {
     // A set of reusable commands where instructions (prompts) and context can be configured.
-    commands: Map<string, CodyCommand>
+    commands: Map<string, DriverCommand>
 }
 
-export interface CodyCommandArgs extends ExecuteEditArguments {
+export interface DriverCommandArgs extends ExecuteEditArguments {
     // for tracing the life of the request
     requestID: string
     // where the command was triggered from

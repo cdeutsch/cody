@@ -1,3 +1,4 @@
+// cspell:ignore lexems elisp objc
 /**
  * List of all supported languages that we have grammars and
  * lexems for. Note that enum values are copied from VSCode API,

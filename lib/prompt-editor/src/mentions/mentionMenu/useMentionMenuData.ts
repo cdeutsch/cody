@@ -45,7 +45,7 @@ export function useMentionMenuParams(): {
             REMOTE_REPOSITORY_PROVIDER_URI,
         ].includes(params.parentItem?.id || '')
 
-    // Increase debounce time in case of remote context item resolution (Cody Web case) or
+    // Increase debounce time in case of remote context item resolution (Driver Web case) or
     // in case of remote-like providers such as remote repositories or remote files
     const debounceTime: number = isRemoteLikeProviderActive ? 300 : 10
 
@@ -96,30 +96,40 @@ export function useMentionMenuData(
 
     // Initial context items aren't filtered when we receive them, so we need to filter them here.
     const defaultContext = useDefaultContextForChat()
-    const initialContext = [...defaultContext.initialContext, ...defaultContext.corpusContext]
-    const filteredInitialContextItems = isInProvider
-        ? []
-        : initialContext.filter(item =>
-              queryLower
-                  ? item.title?.toLowerCase().includes(queryLower) ||
-                    item.uri.toString().toLowerCase().includes(queryLower) ||
-                    item.description?.toString().toLowerCase().includes(queryLower)
-                  : true
-          )
 
-    const additionalItems =
-        value?.items
-            ?.filter(
-                // If an item is shown as initial context, don't show it twice.
-                item =>
-                    !filteredInitialContextItems.some(
-                        initialItem =>
-                            initialItem.uri.toString() === item.uri.toString() &&
-                            initialItem.type === item.type
-                    )
-            )
-            .slice(0, limit)
-            .map(item => prepareUserContextItem(item, remainingTokenBudget)) ?? []
+    const initialContext = useMemo(
+        () => [...defaultContext.initialContext, ...defaultContext.corpusContext],
+        [defaultContext]
+    )
+
+    const filteredInitialContextItems = useMemo(() => {
+        return isInProvider
+            ? []
+            : initialContext.filter(item =>
+                  queryLower
+                      ? item.title?.toLowerCase().includes(queryLower) ||
+                        item.uri.toString().toLowerCase().includes(queryLower) ||
+                        item.description?.toString().toLowerCase().includes(queryLower)
+                      : true
+              )
+    }, [isInProvider, initialContext, queryLower])
+
+    const additionalItems = useMemo(() => {
+        return (
+            value?.items
+                ?.filter(
+                    // If an item is shown as initial context, don't show it twice.
+                    item =>
+                        !filteredInitialContextItems.some(
+                            initialItem =>
+                                initialItem.uri.toString() === item.uri.toString() &&
+                                initialItem.type === item.type
+                        )
+                )
+                .slice(0, limit)
+                .map(item => prepareUserContextItem(item, remainingTokenBudget)) ?? []
+        )
+    }, [value?.items, filteredInitialContextItems, remainingTokenBudget, limit])
 
     return useMemo(
         () =>

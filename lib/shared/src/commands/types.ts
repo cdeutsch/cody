@@ -1,7 +1,7 @@
-// The default Cody Commands
-export type DefaultCodyCommands = DefaultChatCommands | DefaultEditCommands
+// The default Driver Commands
+export type DefaultDriverCommands = DefaultChatCommands | DefaultEditCommands
 
-// Default Cody Commands that runs as a Chat request
+// Default Driver Commands that runs as a Chat request
 export enum DefaultChatCommands {
     Doc = 'doc', // Generate documentation in Chat
     Test = 'test', // Generate documentation in Chat
@@ -10,7 +10,7 @@ export enum DefaultChatCommands {
     Custom = 'custom-chat', // Run custom command in Chat
 }
 
-// Default Cody Commands that runs as an Inline Edit command
+// Default Driver Commands that runs as an Inline Edit command
 export enum DefaultEditCommands {
     Test = 'test', // Generate unit tests with inline edit
     Doc = 'doc', // Generate documentation with inline edit
@@ -18,8 +18,8 @@ export enum DefaultEditCommands {
     Custom = 'custom-edit', // Run custom command with inline edit
 }
 
-// The blueprint of a Cody Custom Command
-export interface CodyCommand {
+// The blueprint of a Driver Custom Command
+export interface DriverCommand {
     /**
      * @deprecated Use 'key' instead.
      */
@@ -30,9 +30,9 @@ export interface CodyCommand {
     key: string
     prompt: string
     description?: string
-    context?: CodyCommandContext
-    type?: CodyCommandType
-    mode?: CodyCommandMode
+    context?: DriverCommandContext
+    type?: DriverCommandType
+    mode?: DriverCommandMode
 
     // Internal use - the ID of the request
     requestID?: string
@@ -40,13 +40,13 @@ export interface CodyCommand {
 
 /**
  * - 'ask' mode is the default mode, run prompt in chat view
- * - 'edit' mode will run prompt with edit command which replace selection with cody's response
+ * - 'edit' mode will run prompt with edit command which replace selection with driver's response
  * - 'insert' mode is the same as edit, it adds to the top of the selection instead of replacing selection
  */
-export type CodyCommandMode = 'ask' | 'edit' | 'insert'
+export type DriverCommandMode = 'ask' | 'edit' | 'insert'
 
 // Type of context available for prompt building
-export interface CodyCommandContext {
+export interface DriverCommandContext {
     // Exclude any context.
     // It takes precedence over all other context.
     none?: boolean
@@ -72,7 +72,7 @@ export interface CodyCommandContext {
     codebase?: boolean
 }
 
-export type CodyCommandType = CustomCommandType | DefaultCommandType | 'recently used'
+export type DriverCommandType = CustomCommandType | DefaultCommandType | 'recently used'
 
 export enum CustomCommandType {
     Workspace = 'workspace',

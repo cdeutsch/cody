@@ -2,8 +2,9 @@ import * as vscode from 'vscode'
 
 import type { ClientSecrets, TokenSource } from '@sourcegraph/cody-shared'
 import { logDebug, logError } from '../output-channel-logger'
-const CODY_ACCESS_TOKEN_SOURCE = 'cody.access-token.source'
-const CODY_ACCESS_TOKEN_SECRET = 'cody.access-token'
+
+export const ACCESS_TOKEN_SOURCE = 'driver-ai.access-token.source'
+export const ACCESS_TOKEN_SECRET = 'driver-ai.access-token'
 
 interface SecretStorage extends vscode.SecretStorage, ClientSecrets {
     get(key: string): Promise<string | undefined>
@@ -11,16 +12,10 @@ interface SecretStorage extends vscode.SecretStorage, ClientSecrets {
     delete(key: string): Promise<void>
     onDidChange(callback: (event: { key: string }) => Promise<void>): vscode.Disposable
 
-    // Shorthand for persisting the user's Cody Access token based on
-    // the Sourcegraph instance endpoint it is associated with.
-    storeToken(
-        endpoint: string,
-        accessToken: string,
-        tokenSource: TokenSource | undefined
-    ): Promise<void>
-    getToken(endpoint: string): Promise<string | undefined>
-    deleteToken(endpoint: string): Promise<void>
-    getTokenSource(endpoint: string): Promise<TokenSource | undefined>
+    storeToken(accessToken: string, tokenSource: TokenSource | undefined): Promise<void>
+    getToken(): Promise<string | undefined>
+    deleteToken(): Promise<void>
+    getTokenSource(): Promise<TokenSource | undefined>
 }
 
 export class VSCodeSecretStorage implements SecretStorage {
@@ -46,7 +41,7 @@ export class VSCodeSecretStorage implements SecretStorage {
     }
 
     constructor() {
-        const config = vscode.workspace.getConfiguration('cody')
+        const config = vscode.workspace.getConfiguration('driver-ai')
         // For user that does not have secret storage implemented in their server
         this.fsPath = config.get('experimental.localTokenPath') || null
         if (this.fsPath) {
@@ -86,35 +81,30 @@ export class VSCodeSecretStorage implements SecretStorage {
         }
     }
 
-    public async getToken(endpoint: string): Promise<string | undefined> {
-        return this.get(endpoint)
+    public async getToken(): Promise<string | undefined> {
+        return this.get(ACCESS_TOKEN_SECRET)
     }
-    public async getTokenSource(endpoint: string): Promise<TokenSource | undefined> {
-        const tokenSource = await this.get(endpoint + CODY_ACCESS_TOKEN_SOURCE)
+    public async getTokenSource(): Promise<TokenSource | undefined> {
+        const tokenSource = await this.get(ACCESS_TOKEN_SOURCE)
         return tokenSource as TokenSource | undefined
     }
 
-    public async storeToken(
-        endpoint: string,
-        accessToken: string,
-        tokenSource: TokenSource | undefined
-    ): Promise<void> {
-        if (!accessToken || !endpoint) {
+    public async storeToken(accessToken: string, tokenSource: TokenSource | undefined): Promise<void> {
+        if (!accessToken) {
             return
         }
-        await this.store(endpoint, accessToken)
-        await this.store(CODY_ACCESS_TOKEN_SECRET, accessToken)
+        await this.store(ACCESS_TOKEN_SECRET, accessToken)
 
         if (!tokenSource) {
             return
         }
-        await this.store(endpoint + CODY_ACCESS_TOKEN_SOURCE, tokenSource)
+        await this.store(ACCESS_TOKEN_SOURCE, tokenSource)
     }
 
-    public async deleteToken(endpoint: string): Promise<void> {
-        await this.secretStorage.delete(endpoint)
-        await this.secretStorage.delete(CODY_ACCESS_TOKEN_SECRET)
-        await this.secretStorage.delete(endpoint + CODY_ACCESS_TOKEN_SOURCE)
+    public async deleteToken(): Promise<void> {
+        logDebug('SecretStorageProvider:deleteToken', 'deleting token')
+        await this.secretStorage.delete(ACCESS_TOKEN_SECRET)
+        await this.secretStorage.delete(ACCESS_TOKEN_SOURCE)
     }
 
     public async delete(key: string): Promise<void> {
@@ -124,7 +114,7 @@ export class VSCodeSecretStorage implements SecretStorage {
     public onDidChange(callback: ({ key }: { key: string }) => Promise<void>): vscode.Disposable {
         return this.secretStorage.onDidChange(event => {
             // Run callback on token changes for current endpoint only
-            if (event.key === CODY_ACCESS_TOKEN_SECRET) {
+            if (event.key === ACCESS_TOKEN_SECRET) {
                 return callback({ key: event.key })
             }
             return
@@ -150,9 +140,10 @@ class InMemorySecretStorage implements SecretStorage {
         if (initialToken) {
             const parsedToken = JSON.parse(initialToken)
             if (Array.isArray(parsedToken) && parsedToken.length === 2) {
-                // The default types of tokensource is undefined(This is to make sure that older tokens from before are not deleted because we don't know their tokenSource)
+                // The default types of TokenSource is undefined
+                // (This is to make sure that older tokens from before are not deleted because we don't know their tokenSource)
                 const tokenSource = undefined
-                this.storeToken(parsedToken[0], parsedToken[1], tokenSource)
+                this.storeToken(parsedToken[0], tokenSource)
             } else {
                 throw new Error('Initial token must be an array with [endpoint, value]')
             }
@@ -177,29 +168,23 @@ class InMemorySecretStorage implements SecretStorage {
         return Promise.resolve()
     }
 
-    public async getToken(endpoint: string): Promise<string | undefined> {
-        return this.get(endpoint)
+    public async getToken(): Promise<string | undefined> {
+        return this.get(ACCESS_TOKEN_SECRET)
     }
-    public async getTokenSource(endpoint: string): Promise<TokenSource | undefined> {
-        const tokenSource = await this.get(endpoint + CODY_ACCESS_TOKEN_SOURCE)
+    public async getTokenSource(): Promise<TokenSource | undefined> {
+        const tokenSource = await this.get(ACCESS_TOKEN_SOURCE)
         return tokenSource as TokenSource | undefined
     }
 
-    public async storeToken(
-        endpoint: string,
-        accessToken: string,
-        tokenSource: TokenSource | undefined
-    ): Promise<void> {
-        await this.store(endpoint, accessToken)
-        await this.store(CODY_ACCESS_TOKEN_SECRET, accessToken)
+    public async storeToken(accessToken: string, tokenSource: TokenSource | undefined): Promise<void> {
+        await this.store(ACCESS_TOKEN_SECRET, accessToken)
         if (tokenSource) {
-            await this.store(endpoint + CODY_ACCESS_TOKEN_SOURCE, tokenSource)
+            await this.store(ACCESS_TOKEN_SOURCE, tokenSource)
         }
     }
 
-    public async deleteToken(endpoint: string): Promise<void> {
-        await this.delete(endpoint)
-        await this.delete(CODY_ACCESS_TOKEN_SECRET)
+    public async deleteToken(): Promise<void> {
+        await this.delete(ACCESS_TOKEN_SECRET)
     }
 
     public async delete(key: string): Promise<void> {
@@ -247,9 +232,13 @@ interface ConfigJson {
  * The underlying storage is set on extension activation via `secretStorage.setStorage(context.secrets)`.
  */
 export const secretStorage =
-    process.env.CODY_TESTING === 'true' || process.env.CODY_PROFILE_TEMP === 'true'
+    process.env.DRIVER_TESTING === 'true'
         ? new InMemorySecretStorage(
-              process.env.CODY_TESTING === 'true' ? process.env.TESTING_SECRET_STORAGE_STATE : undefined,
-              process.env.CODY_TESTING === 'true' ? process.env.TESTING_SECRET_STORAGE_TOKEN : undefined
+              process.env.DRIVER_TESTING === 'true'
+                  ? process.env.TESTING_SECRET_STORAGE_STATE
+                  : undefined,
+              process.env.DRIVER_TESTING === 'true'
+                  ? process.env.TESTING_SECRET_STORAGE_TOKEN
+                  : undefined
           )
         : new VSCodeSecretStorage()

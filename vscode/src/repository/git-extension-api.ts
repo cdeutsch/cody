@@ -34,7 +34,7 @@ export async function initVSCodeGitApi(): Promise<vscode.Disposable> {
         // Display error message if git extension is disabled
         if (gitExtension?.isActive && `${error}`.includes('Git model not found')) {
             console.warn(
-                'Git extension is not available. Please ensure it is enabled for Cody to work properly.'
+                'Git extension is not available. Please ensure it is enabled for Driver to work properly.'
             )
         }
     }

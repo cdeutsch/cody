@@ -5,8 +5,6 @@ import { getConfiguration } from '../configuration'
 import { DocumentCodeAction } from './document'
 import { EditCodeAction } from './edit'
 import { ExplainCodeAction } from './explain'
-import { FixupCodeAction } from './fixup'
-import { TestCodeAction } from './test'
 
 export class CodeActionProvider implements vscode.Disposable {
     private disposables: vscode.Disposable[] = []
@@ -31,11 +29,11 @@ export class CodeActionProvider implements vscode.Disposable {
             return
         }
 
-        this.addActionProvider(TestCodeAction)
+        // this.addActionProvider(TestCodeAction)
         this.addActionProvider(DocumentCodeAction)
         this.addActionProvider(EditCodeAction)
         this.addActionProvider(ExplainCodeAction)
-        this.addActionProvider(FixupCodeAction)
+        // this.addActionProvider(FixupCodeAction)
     }
 
     private addActionProvider(ActionType: {

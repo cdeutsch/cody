@@ -13,28 +13,26 @@ import { URI } from 'vscode-uri'
 
 import {
     type ChatMessage,
-    type CodyClientConfig,
+    type ClientConfig,
     type ContextItem,
     type ContextItemOpenCtx,
     ContextItemSource,
     PromptString,
     REMOTE_DIRECTORY_PROVIDER_URI,
     type WebviewToExtensionAPI,
-    createGuardrailsImpl,
     isErrorLike,
     setDisplayPathEnvInfo,
 } from '@sourcegraph/cody-shared'
-import { AppWrapper } from 'cody-ai/webviews/AppWrapper'
-import type { VSCodeWrapper } from 'cody-ai/webviews/utils/VSCodeApi'
+import { AppWrapper } from 'driver-ai/webviews/AppWrapper'
+import type { VSCodeWrapper } from 'driver-ai/webviews/utils/VSCodeApi'
 
 import { ChatMentionContext, type ChatMentionsSettings } from '@sourcegraph/prompt-editor'
-import { getAppWrappers } from 'cody-ai/webviews/App'
-import { CodyPanel } from 'cody-ai/webviews/CodyPanel'
-import { useClientActionDispatcher } from 'cody-ai/webviews/client/clientState'
-import type { View } from 'cody-ai/webviews/tabs'
-import { ComposedWrappers, type Wrapper } from 'cody-ai/webviews/utils/composeWrappers'
-import { createWebviewTelemetryRecorder } from 'cody-ai/webviews/utils/telemetry'
-import type { Config } from 'cody-ai/webviews/utils/useConfig'
+import { getAppWrappers } from 'driver-ai/webviews/App'
+import { CodyPanel } from 'driver-ai/webviews/CodyPanel'
+import { useClientActionDispatcher } from 'driver-ai/webviews/client/clientState'
+import type { View } from 'driver-ai/webviews/tabs'
+import { ComposedWrappers, type Wrapper } from 'driver-ai/webviews/utils/composeWrappers'
+import type { Config } from 'driver-ai/webviews/utils/useConfig'
 
 import type { CodyExternalApi, InitialContext } from '../types'
 
@@ -43,8 +41,8 @@ import { type UseCodyWebAgentInput, useCodyWebAgent } from './use-cody-agent'
 // Include global Cody Web styles to the styles bundle
 import '../global-styles/styles.css'
 import type { DefaultContext } from '@sourcegraph/cody-shared/src/codebase-context/messages'
-import type { WebviewType } from 'cody-ai/src/chat/protocol'
-import { downloadChatHistory } from 'cody-ai/webviews/chat/downloadChatHistory'
+import type { WebviewType } from 'driver-ai/src/chat/protocol'
+import { downloadChatHistory } from 'driver-ai/webviews/chat/downloadChatHistory'
 import styles from './CodyWebChat.module.css'
 import { ChatSkeleton } from './skeleton/ChatSkeleton'
 
@@ -181,7 +179,7 @@ const CodyWebPanel: FC<CodyWebPanelProps> = props => {
     const [messageInProgress, setMessageInProgress] = useState<ChatMessage | null>(null)
     const [transcript, setTranscript] = useState<ChatMessage[]>([])
     const [config, setConfig] = useState<Config | null>(null)
-    const [clientConfig, setClientConfig] = useState<CodyClientConfig | null>(null)
+    const [clientConfig, setClientConfig] = useState<ClientConfig | null>(null)
     const [view, setView] = useState<View | undefined>()
     const extensionApiRef = useRef<WebviewToExtensionAPI | null>(null)
 
@@ -280,7 +278,7 @@ const CodyWebPanel: FC<CodyWebPanelProps> = props => {
     }, [vscodeAPI, dispatchClientAction, handleTranscriptChange, handleViewChange, webview])
 
     // V2 telemetry recorder
-    const telemetryRecorder = useMemo(() => createWebviewTelemetryRecorder(vscodeAPI), [vscodeAPI])
+    // const telemetryRecorder = useMemo(() => createWebviewTelemetryRecorder(vscodeAPI), [vscodeAPI])
 
     const staticDefaultContext = useMemo<DefaultContext>((): DefaultContext => {
         const { repository, fileURL, isDirectory } = initialContextData ?? {}
@@ -341,12 +339,11 @@ const CodyWebPanel: FC<CodyWebPanelProps> = props => {
         () =>
             getAppWrappers({
                 vscodeAPI,
-                telemetryRecorder,
                 config,
                 clientConfig,
                 staticDefaultContext,
             }),
-        [vscodeAPI, telemetryRecorder, config, clientConfig, staticDefaultContext]
+        [vscodeAPI, config, clientConfig, staticDefaultContext]
     )
 
     const CONTEXT_MENTIONS_SETTINGS = useMemo<ChatMentionsSettings>(() => {
@@ -360,35 +357,6 @@ const CodyWebPanel: FC<CodyWebPanelProps> = props => {
 
     const isLoading = !config || !view
 
-    const attributionMode = config?.config.attribution || 'none'
-    const guardrails = useMemo(
-        () =>
-            createGuardrailsImpl(attributionMode, (snippet: string) => {
-                vscodeAPI.postMessage({
-                    command: 'attribution-search',
-                    snippet,
-                })
-            }),
-        [attributionMode, vscodeAPI]
-    )
-    useLayoutEffect(() => {
-        vscodeAPI.onMessage(message => {
-            if (message.type === 'attribution') {
-                if (message.attribution) {
-                    guardrails.notifyAttributionSuccess(message.snippet, {
-                        repositories: message.attribution.repositoryNames.map(name => {
-                            return { name }
-                        }),
-                        limitHit: message.attribution.limitHit,
-                    })
-                }
-                if (message.error) {
-                    guardrails.notifyAttributionFailure(message.snippet, new Error(message.error))
-                }
-            }
-        })
-    }, [vscodeAPI, guardrails])
-
     return (
         <div className={className} data-cody-web-chat={true}>
             {!isLoading && (
@@ -399,11 +367,7 @@ const CodyWebPanel: FC<CodyWebPanelProps> = props => {
                             setView={handleViewChange}
                             errorMessages={errorMessages}
                             setErrorMessages={setErrorMessages}
-                            guardrails={guardrails}
                             configuration={config}
-                            chatEnabled={true}
-                            instanceNotices={clientConfig?.notices ?? []}
-                            showWelcomeMessage={true}
                             showIDESnippetActions={false}
                             messageInProgress={messageInProgress}
                             transcript={transcript}

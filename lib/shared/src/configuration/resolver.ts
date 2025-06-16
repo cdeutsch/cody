@@ -8,8 +8,6 @@ import {
     promiseToObservable,
 } from '../misc/observable'
 import { skipPendingOperation, switchMapReplayOperation } from '../misc/observableOperation'
-import type { DefaultsAndUserPreferencesByEndpoint } from '../models/modelsService'
-import { DOTCOM_URL } from '../sourcegraph-api/environments'
 import { type PartialDeep, type ReadonlyDeep, isError } from '../utils'
 import { resolveAuth } from './auth-resolver'
 
@@ -27,15 +25,13 @@ export interface ConfigurationInput {
 }
 
 export interface ClientSecrets {
-    getToken(endpoint: string): Promise<string | undefined>
-    getTokenSource(endpoint: string): Promise<TokenSource | undefined>
+    getToken(): Promise<string | undefined>
+    getTokenSource(): Promise<TokenSource | undefined>
 }
 
 export interface ClientState {
-    lastUsedEndpoint: string | null
     anonymousUserID: string | null
     lastUsedChatModality: 'sidebar' | 'editor'
-    modelPreferences: DefaultsAndUserPreferencesByEndpoint
 }
 
 /**
@@ -84,13 +80,8 @@ async function resolveConfiguration({
         await onReinstall()
     }
 
-    const serverEndpoint =
-        clientConfiguration.overrideServerEndpoint ||
-        clientState.lastUsedEndpoint ||
-        DOTCOM_URL.toString()
-
     try {
-        const auth = await resolveAuth(serverEndpoint, clientConfiguration, clientSecrets)
+        const auth = await resolveAuth(clientConfiguration, clientSecrets)
         return { configuration: clientConfiguration, clientState, auth, isReinstall }
     } catch (error) {
         // We don't want to throw here, because that would cause the observable to terminate and
@@ -98,7 +89,6 @@ async function resolveConfiguration({
         logError('resolveConfiguration', `Error resolving configuration: ${error}`)
         const auth = {
             credentials: undefined,
-            serverEndpoint,
             error: error,
         }
         return { configuration: clientConfiguration, clientState, auth, isReinstall }
@@ -143,7 +133,7 @@ export function setStaticResolvedConfigurationValue(
  * The resolved configuration, which combines and resolves VS Code or other editor configuration,
  * authentication credentials, and other client state.
  *
- * This is the preferred way to retrieve the configuration from anywhere in the Cody codebase.
+ * This is the preferred way to retrieve the configuration from anywhere in the Driver codebase.
  * Because it returns an Observable and not just the current value, callers are able to react to
  * configuration changes. If a caller truly just needs the current value or has not been updated to
  * use an Observable, it can use {@link currentResolvedConfig} instead, but this often leads to

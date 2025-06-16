@@ -1,9 +1,3 @@
-import {
-    CHAT_INPUT_TOKEN_BUDGET,
-    CHAT_OUTPUT_TOKEN_BUDGET,
-    EXTENDED_CHAT_INPUT_TOKEN_BUDGET,
-    EXTENDED_USER_CONTEXT_TOKEN_BUDGET,
-} from '../token/constants'
 import type {
     ClientSideConfig,
     ContextWindow,
@@ -15,9 +9,8 @@ import type {
     ModelStatus,
     ModelTier,
 } from './modelsService'
-import { ModelTag } from './tags'
-import { type ModelContextWindow, ModelUsage } from './types'
-import { getModelInfo } from './utils'
+import type { ModelTag } from './tags'
+import type { ModelContextWindow, ModelUsage } from './types'
 
 /**
  * Model describes an LLM model and its capabilities.
@@ -64,62 +57,6 @@ export interface Model {
     disabled?: boolean
 }
 
-interface ModelParams {
-    id: string
-    modelRef?: ModelRefStr | ModelRef
-    usage: ModelUsage[]
-    contextWindow?: ModelContextWindow
-    clientSideConfig?: ClientSideConfig
-    tags?: ModelTag[]
-    provider?: string
-    title?: string
-}
-
-export function createModel({
-    id,
-    modelRef: modelRefInput,
-    usage,
-    contextWindow = {
-        input: CHAT_INPUT_TOKEN_BUDGET,
-        output: CHAT_OUTPUT_TOKEN_BUDGET,
-    },
-    clientSideConfig,
-    tags = [],
-    provider,
-    title,
-}: ModelParams): Model {
-    // Start by setting the model ref, by default using a new form but falling back to using the
-    // old-style of parsing the modelId or using provided fields
-    let modelRef: ModelRef
-    if (typeof modelRefInput === 'object') {
-        modelRef = modelRefInput
-    } else if (typeof modelRefInput === 'string') {
-        modelRef = parseModelRef(modelRefInput)
-    } else {
-        const info = getModelInfo(id)
-        modelRef = {
-            providerId: provider ?? info.provider,
-            apiVersionId: 'unknown',
-            modelId: title ?? info.title,
-        }
-    }
-
-    if (clientSideConfig?.options?.categories?.includes(ModelTag.Vision)) {
-        tags.push(ModelTag.Vision)
-    }
-
-    return {
-        id,
-        modelRef,
-        usage,
-        contextWindow,
-        clientSideConfig,
-        tags,
-        provider: modelRef.providerId,
-        title: title ?? modelRef.modelId,
-    }
-}
-
 export interface ServerModel {
     modelRef: ModelRefStr
     displayName: string
@@ -134,149 +71,3 @@ export interface ServerModel {
 
     clientSideConfig?: ClientSideConfig
 }
-
-export function createModelFromServerModel(
-    {
-        modelRef,
-        displayName,
-        capabilities,
-        category,
-        tier,
-        status,
-        clientSideConfig,
-        contextWindow,
-    }: ServerModel,
-    enhancedContextWindowFlagEnabled: boolean
-): Model {
-    const ref = parseModelRef(modelRef)
-    const { maxInputTokens, maxOutputTokens } = contextWindow
-    const _contextWindow: ModelContextWindow = {
-        input: maxInputTokens,
-        output: maxOutputTokens,
-    }
-    const usage = capabilities.flatMap(capabilityToUsage)
-    // NOTE: Model with reasoning enabled should only be used for chat.
-    if (capabilities.includes('reasoning') && usage.includes(ModelUsage.Edit)) {
-        usage.splice(usage.indexOf(ModelUsage.Edit), 1)
-    }
-    // Use Extended Context Window
-    if (maxInputTokens === EXTENDED_CHAT_INPUT_TOKEN_BUDGET + EXTENDED_USER_CONTEXT_TOKEN_BUDGET) {
-        _contextWindow.input = EXTENDED_CHAT_INPUT_TOKEN_BUDGET
-        _contextWindow.context = { user: EXTENDED_USER_CONTEXT_TOKEN_BUDGET }
-    }
-
-    if (
-        enhancedContextWindowFlagEnabled &&
-        contextWindow.maxUserInputTokens &&
-        contextWindow.maxInputTokens > 0 &&
-        contextWindow.maxInputTokens > contextWindow.maxUserInputTokens
-    ) {
-        _contextWindow.input = contextWindow.maxUserInputTokens
-        _contextWindow.context = {
-            user: contextWindow.maxInputTokens - contextWindow.maxUserInputTokens,
-        }
-    }
-    return createModel({
-        id: modelRef,
-        modelRef: ref,
-        usage,
-        contextWindow: _contextWindow,
-        clientSideConfig,
-        tags: getServerModelTags(capabilities, category, status, tier),
-        provider: ref.providerId,
-        title: displayName,
-    })
-}
-
-function capabilityToUsage(capability: ModelCapability): ModelUsage[] {
-    switch (capability) {
-        case 'autocomplete':
-            return [ModelUsage.Autocomplete]
-        case 'chat':
-            return [ModelUsage.Chat]
-        // unknown capability should be handled as tags.
-        case 'edit':
-            return [ModelUsage.Edit]
-        default:
-            return []
-    }
-}
-
-export function modelTier(model: Model): ModelTier {
-    const tierSet = new Set<ModelTag>([ModelTag.Pro, ModelTag.Enterprise])
-    return (model.tags.find(tag => tierSet.has(tag)) ?? ModelTag.Free) as ModelTier
-}
-
-export function parseModelRef(ref: ModelRefStr): ModelRef {
-    // BUG: There is data loss here and the potential for ambiguity.
-    // BUG: We are assuming the modelRef is valid, but it might not be.
-    try {
-        const [providerId, apiVersionId, modelId] = ref.split('::', 3)
-        return {
-            providerId,
-            apiVersionId,
-            modelId,
-        }
-    } catch {
-        const [providerId, modelId] = ref.split('/', 2)
-        return {
-            providerId,
-            modelId,
-            apiVersionId: 'unknown',
-        }
-    }
-}
-
-/**
- * Converts a model reference or ID to its legacy model ID format.
- * If the input is a model reference, it extracts the modelId.
- * If the input is already a legacy ID, it returns it unchanged.
- *
- * @param modelRefOrID - The model reference string or legacy model ID
- * @returns The legacy model ID
- */
-export function toLegacyModel(modelRefOrID: string): string {
-    return parseModelRef(modelRefOrID as ModelRefStr).modelId || modelRefOrID
-}
-
-export function getServerModelTags(
-    capabilities: ModelCapability[],
-    category: ModelCategory,
-    status: ModelStatus,
-    tier: ModelTier
-): ModelTag[] {
-    const tags: ModelTag[] = [tier]
-    if (capabilities.includes('vision')) {
-        tags.push(ModelTag.Vision)
-    }
-
-    if (capabilities.includes('reasoning')) {
-        tags.push(ModelTag.Reasoning)
-    }
-    // TODO (bee) removes once o1 is rolled out.
-    // HACK: Currently only o1 models are waitlisted,
-    // so we can use this to determine if a model is stream-disabled.
-    // In the future, we should have a seperate field for this.
-    if (status === 'waitlist') {
-        tags.push(ModelTag.Waitlist)
-        if (tier === ModelTag.Pro) {
-            tags.push(ModelTag.StreamDisabled)
-        }
-    } else if (status === 'internal') {
-        tags.push(ModelTag.Internal)
-    } else if (status === 'experimental') {
-        tags.push(ModelTag.Experimental)
-    }
-    if (category === 'accuracy') {
-        tags.push(ModelTag.Power)
-    } else {
-        tags.push(category)
-    }
-    return tags
-}
-
-export const FIXTURE_MODEL = createModel({
-    id: 'my-model',
-    usage: [ModelUsage.Chat],
-    tags: [ModelTag.Enterprise],
-})

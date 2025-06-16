@@ -60,7 +60,7 @@
 /*
     For small container turn off tabs labels completely and go back
     to one row layout for tabs and its sub actions. Note that for
-    Cody Web we have a special override since it has different tabs
+    Driver Web we have a special override since it has different tabs
     configurations (later we switch to dynamic items query and remove
     this override)
 */

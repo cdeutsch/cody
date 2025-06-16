@@ -46,7 +46,7 @@ export type Event = DoneEvent | CompletionEvent | ErrorEvent
 export interface Message {
     // Note: The unified API only supports one system message passed as the first message
     speaker: 'human' | 'assistant' | 'system'
-    // content used to be text, but starting from api-version 7, we require Cody clients to
+    // content used to be text, but starting from api-version 7, we require Driver clients to
     // stop using text and send content to instead to respect the official API contract and
     // mirrors what OpenAI and Anthropic expect
     text?: PromptString
@@ -57,8 +57,8 @@ export interface Message {
 // content: string | Array<TextPart | ImagePart | FilePart>
 export type MessagePart =
     | TextContentPart // natively supported by LLM
-    | { type: 'context_file'; uri: string; content?: string } // Cody extension
-    | { type: 'context_repo'; repoId: string } // Cody extension
+    | { type: 'context_file'; uri: string; content?: string } // Driver extension
+    | { type: 'context_repo'; repoId: string } // Driver extension
     | ImageContentPart // natively supported by LLM
     | ToolCallContentPart // Assistant-only
     | ToolResultContentPart // Human-only

@@ -2,19 +2,20 @@ import type { Mention } from '@openctx/client'
 import {
     type ContextItem,
     type ContextItemOpenCtx,
+    type ContextItemPdf,
     type ContextItemRepository,
     type ContextMentionProviderID,
     FILE_CONTEXT_MENTION_PROVIDER,
     GLOBAL_SEARCH_PROVIDER_URI,
     type MentionMenuData,
     type MentionQuery,
+    PDF_CONTEXT_MENTION_PROVIDER,
     REMOTE_REPOSITORY_PROVIDER_URI,
     SYMBOL_CONTEXT_MENTION_PROVIDER,
     clientCapabilities,
     combineLatest,
-    currentOpenCtxController,
-    firstResultFromOperation,
     fromVSCodeEvent,
+    getPdfContextFiles,
     isAbortError,
     isError,
     mentionProvidersMetadata,
@@ -23,7 +24,6 @@ import {
     skipPendingOperation,
     startWith,
     switchMapReplayOperation,
-    telemetryEvents,
 } from '@sourcegraph/cody-shared'
 import { LRUCache } from 'lru-cache'
 import { Observable, map } from 'observable-fns'
@@ -55,7 +55,7 @@ export function getMentionMenuData(options: {
                 getChatContextItemsForMention(
                     {
                         mentionQuery: options.query,
-                        rangeFilter: !clientCapabilities().isCodyWeb,
+                        rangeFilter: !clientCapabilities().isDriverWeb,
                     },
                     signal
                 )
@@ -96,7 +96,7 @@ export function getMentionMenuData(options: {
                 mentionMenuTelemetryCache.get(options.query.interactionID) ?? new Set<string | null>()
             if (!cache.has(options.query.provider)) {
                 cache.add(options.query.provider)
-                telemetryEvents['cody.at-mention/selected'].record('chat', options.query.provider)
+                // telemetryEvents['driver.at-mention/selected'].record('chat', options.query.provider);
             }
             mentionMenuTelemetryCache.set(options.query.interactionID, cache)
         }
@@ -137,20 +137,23 @@ export async function getChatContextItemsForMention(
         case FILE_CONTEXT_MENTION_PROVIDER.id: {
             return getFileContextItems(mentionQuery, rangeFilter, MAX_RESULTS)
         }
+        case PDF_CONTEXT_MENTION_PROVIDER.id: {
+            return getPdfContextItems(mentionQuery, rangeFilter, MAX_RESULTS)
+        }
 
         default: {
-            const items = await currentOpenCtxController().mentions(
-                {
-                    query: mentionQuery.text,
-                    ...(await firstResultFromOperation(activeEditorContextForOpenCtxMentions)),
-                },
-                // get mention items for the selected provider only.
-                { providerUri: mentionQuery.provider }
-            )
+            return []
 
-            return items.map((item): ContextItemOpenCtx | ContextItemRepository =>
-                contextItemMentionFromOpenCtxItem(item)
-            )
+            // const items = await currentOpenCtxController().mentions(
+            //   {
+            //     query: mentionQuery.text,
+            //     ...(await firstResultFromOperation(activeEditorContextForOpenCtxMentions)),
+            //   },
+            //   // get mention items for the selected provider only.
+            //   { providerUri: mentionQuery.provider }
+            // );
+
+            // return items.map((item): ContextItemOpenCtx | ContextItemRepository => contextItemMentionFromOpenCtxItem(item));
         }
     }
 }
@@ -182,27 +185,50 @@ const getFileContextItems = async (
     return files
 }
 
-const getRepositoryContextItems = async (mentionQuery: MentionQuery, maxResults: number) => {
-    return currentOpenCtxController()
-        .mentions(
-            {
-                query: mentionQuery.text,
-            },
-            {
-                providerUri: REMOTE_REPOSITORY_PROVIDER_URI,
-            }
-        )
-        .then(items => items.map(contextItemMentionFromOpenCtxItem))
-        .then(items =>
-            items
-                .sort(
-                    (a, b) =>
-                        getSearchMatchRank(a, mentionQuery.text) -
-                        getSearchMatchRank(b, mentionQuery.text)
-                )
-                .slice(0, maxResults)
-        )
+const getPdfContextItems = async (
+    mentionQuery: MentionQuery,
+    rangeFilter: boolean,
+    maxResults: number
+) => {
+    const response = await getPdfContextFiles({
+        query: mentionQuery.text,
+        maxResults,
+    })
+
+    const config = vscode.workspace.getConfiguration()
+    const baseAppUrl = config.get<string>('driver-ai.appUrl') || 'https://app.driverai.com'
+
+    const pdfContextItems = response.results
+        .filter(asset => asset.most_recent_version?.root_node)
+        .map<ContextItemPdf>(asset => ({
+            type: 'pdf',
+            uri: URI.parse(
+                `${baseAppUrl}/${asset.organization_id}/pdf/${asset.most_recent_version?.root_node?.id}`
+            ),
+            title: asset.display_name,
+            rootNodeId: asset.most_recent_version?.root_node?.id ?? '',
+        }))
+
+    return pdfContextItems
 }
+
+// const getRepositoryContextItems = async (mentionQuery: MentionQuery, maxResults: number) => {
+//   return currentOpenCtxController()
+//     .mentions(
+//       {
+//         query: mentionQuery.text,
+//       },
+//       {
+//         providerUri: REMOTE_REPOSITORY_PROVIDER_URI,
+//       }
+//     )
+//     .then((items) => items.map(contextItemMentionFromOpenCtxItem))
+//     .then((items) =>
+//       items
+//         .sort((a, b) => getSearchMatchRank(a, mentionQuery.text) - getSearchMatchRank(b, mentionQuery.text))
+//         .slice(0, maxResults)
+//     );
+// };
 
 export enum BestMatch {
     Exact = 0,
@@ -291,7 +317,7 @@ const getGlobalSearchContextItems = async (
     rangeFilter: boolean,
     maxResults: number // default 10
 ) => {
-    const [fileContextItems, symbolContextItems, repositoryContextItems] = await Promise.all([
+    const [fileContextItems, symbolContextItems] = await Promise.all([
         getFileContextItems(mentionQuery, rangeFilter, maxResults),
         getSymbolContextFiles(
             mentionQuery.text,
@@ -299,19 +325,18 @@ const getGlobalSearchContextItems = async (
             Math.max(maxResults / 4, 3),
             mentionQuery.contextRemoteRepositoriesNames
         ),
-        getRepositoryContextItems(
-            mentionQuery,
-            // at max 4 repository results
-            Math.min(maxResults / 4, 3)
-        ),
+        // getRepositoryContextItems(
+        //   mentionQuery,
+        //   // at max 4 repository results
+        //   Math.min(maxResults / 4, 3)
+        // ),
     ])
 
     return [
         ...[
             ...fileContextItems
                 .sort((a, b) => sortByBestMatch(a, b, mentionQuery))
-                .slice(0, maxResults - symbolContextItems.length - repositoryContextItems.length),
-            ...repositoryContextItems,
+                .slice(0, maxResults - symbolContextItems.length),
         ].sort((a, b) => sortByBestMatch(a, b, mentionQuery)),
         // always keep symbol results at the last, sorted by best match
         ...symbolContextItems.sort((a, b) => sortByBestMatch(a, b, mentionQuery)),

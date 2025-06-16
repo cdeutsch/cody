@@ -1,8 +1,9 @@
+// cspell:ignore cenv
 import type { UIKind } from 'vscode' // types are ok
 
 /**
  * In general config values should be preferred over environment variables. The
- * exeption roughly being:
+ * exception roughly being:
  * 1. Settings that shouldn't be used by users
  * 2. Settings that have deep implications for the execution environment and
  *    would require a reload of the extension/platform if changed such UI_KIND.
@@ -21,66 +22,20 @@ import type { UIKind } from 'vscode' // types are ok
 
 export const cenv = defineEnvBuilder({
     /**
-     * A proxy string that falls back to Node's HTTP_PROXY and HTTPS_PROXY if
-     * not explicitly configured (or disabled with 'false').
-     */
-    CODY_NODE_DEFAULT_PROXY: proxyStringWithNodeFallback,
-
-    /**
-     * Endpoints for which the proxy should be ignored
-     */
-    CODY_NODE_NO_PROXY: (envValue, _) => str(envValue) || str(getEnv('NO_PROXY')),
-
-    /**
-     * A setting that is similar (and falls back to) Node's NODE_TLS_REJECT_UNAUTHORIZED setting
-     */
-    CODY_NODE_TLS_REJECT_UNAUTHORIZED: (envValue, _) =>
-        bool(envValue) ?? bool(getEnv('NODE_TLS_REJECT_UNAUTHORIZED')),
-
-    /**
-     * Enables unstable internal testing configuration to be read from settings.json
-     */
-    CODY_CONFIG_ENABLE_INTERNAL_UNSTABLE: (envValue, _) =>
-        bool(envValue) ?? bool(getEnv('CODY_TESTING')) ?? false,
-
-    /**
      * Forces the UIKind regardless of what vscode.env.uiKind returns.
      */
-    CODY_OVERRIDE_UI_KIND: (envValue, _) => uiKind(envValue),
-
-    /**
-     * Disable fetching of Ollama models
-     */
-    CODY_OVERRIDE_DISABLE_OLLAMA: (envValue, _) =>
-        bool(envValue) ?? assigned(getEnv('VITEST')) ?? assigned(getEnv('PW')) ?? false,
+    DRIVER_OVERRIDE_UI_KIND: (envValue, _) => uiKind(envValue),
 
     /**
      * Forces a specific URL to be the DotCom API endpoint
      */
-    CODY_OVERRIDE_DOTCOM_URL: (envValue, _) =>
+    DRIVER_OVERRIDE_DOTCOM_URL: (envValue, _) =>
         str(envValue) ?? /* LEGACY */ str(getEnv('TESTING_DOTCOM_URL')),
 
     /**
      * Disables the default console logging
      */
-    CODY_DEFAULT_LOGGER_DISABLE: (envValue, _) => bool(envValue) ?? assigned(getEnv('VITEST')) ?? false,
-
-    /**
-     * General flag to supress logs considered verbose during testing.
-     */
-    CODY_TESTING_LOG_SUPRESS_VERBOSE: (envValue, _) =>
-        bool(envValue) ?? assigned(getEnv('VITEST')) ?? false,
-
-    /**
-     * Ignore error for telemetry provider initializations
-     */
-    CODY_TESTING_IGNORE_TELEMETRY_PROVIDER_ERROR: (envValue, _) =>
-        bool(envValue) ?? assigned(getEnv('VITEST')) ?? false,
-
-    /**
-     * Limit the number of timers emitted from observables so that tests don't get stuck
-     */
-    CODY_TESTING_LIMIT_MAX_TIMERS: (envValue, _) =>
+    DRIVER_DEFAULT_LOGGER_DISABLE: (envValue, _) =>
         bool(envValue) ?? assigned(getEnv('VITEST')) ?? false,
 })
 
@@ -170,34 +125,4 @@ function uiKind(uiKind: string | undefined): UIKind | undefined {
         default:
             return undefined
     }
-}
-
-/**
- * If explicitly set to false no proxy value is returned. Or returns the string
- * value set otherwise. If no explicit value is set value defaults to the
- * default HTTPS_PROXY or HTTP_PROXY values (in that order).
- */
-function proxyStringWithNodeFallback(envValue: string | undefined): string | undefined {
-    if (bool(envValue) === false) {
-        return undefined
-    }
-
-    const forcedProxy = str(envValue)
-    if (forcedProxy) {
-        return forcedProxy
-    }
-
-    // If no explicit value was set we fall back to Node's proxy settings.
-
-    // TODO: We should check NO_PROXY to see if we're excluded. To be determined
-    // how we identify ourselves.
-    const httpsProxy = str(getEnv('HTTPS_PROXY'))
-    const httpProxy = str(getEnv('HTTP_PROXY'))
-
-    // we assume we always want to prioritize https requests by default
-    if (httpsProxy || httpProxy) {
-        return httpsProxy || httpProxy
-    }
-
-    return undefined
 }

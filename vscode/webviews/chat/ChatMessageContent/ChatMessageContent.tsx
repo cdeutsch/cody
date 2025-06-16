@@ -1,11 +1,10 @@
-import type { Guardrails, PromptString } from '@sourcegraph/cody-shared'
+import type { PromptString } from '@sourcegraph/cody-shared'
 import { clsx } from 'clsx'
 import type React from 'react'
 import { useCallback, useMemo } from 'react'
 import { RichMarkdown } from '../../components/RichMarkdown'
 import { getVSCodeAPI } from '../../utils/VSCodeApi'
 import { useConfig } from '../../utils/useConfig'
-import type { RegeneratingCodeBlockState } from '../Transcript'
 import type { PriorHumanMessageInfo } from '../cells/messageCell/assistant/AssistantMessageCell'
 import styles from './ChatMessageContent.module.css'
 import { ThinkingCell } from './ThinkingCell'
@@ -25,8 +24,6 @@ export interface CodeBlockActionsProps {
         onAccept: (id: string) => void
         onReject: (id: string) => void
     }
-    onRegenerate: (code: string, language: string | undefined) => void
-    regeneratingCodeBlocks: RegeneratingCodeBlockState[]
 }
 
 interface ChatMessageContentProps {
@@ -36,15 +33,10 @@ interface ChatMessageContentProps {
 
     copyButtonOnSubmit?: CodeBlockActionsProps['copyButtonOnSubmit']
     insertButtonOnSubmit?: CodeBlockActionsProps['insertButtonOnSubmit']
-    onRegenerate: (code: string, language: string | undefined) => void
-    regeneratingCodeBlocks: CodeBlockActionsProps['regeneratingCodeBlocks']
-
-    smartApply?: CodeBlockActionsProps['smartApply']
 
     isThoughtProcessOpened?: boolean
     setThoughtProcessOpened?: (open: boolean) => void
 
-    guardrails: Guardrails
     className?: string
 }
 
@@ -56,12 +48,7 @@ export const ChatMessageContent: React.FunctionComponent<ChatMessageContentProps
     isMessageLoading,
     humanMessage,
     copyButtonOnSubmit,
-    insertButtonOnSubmit,
-    onRegenerate,
-    regeneratingCodeBlocks,
-    guardrails,
     className,
-    smartApply,
     isThoughtProcessOpened,
     setThoughtProcessOpened,
 }) => {
@@ -72,14 +59,12 @@ export const ChatMessageContent: React.FunctionComponent<ChatMessageContentProps
         [displayMarkdown]
     )
 
-    const onInsert = config.config.hasEditCapability ? insertButtonOnSubmit : undefined
-
     let onExecute: ((command: string) => void) | undefined = useCallback((command: string) => {
         // Execute command in terminal
         const vscodeAPI = getVSCodeAPI()
         vscodeAPI.postMessage({
             command: 'command',
-            id: 'cody.terminal.execute',
+            id: 'driver-ai.terminal.execute',
             arg: command.trim(),
         })
     }, [])
@@ -106,15 +91,9 @@ export const ChatMessageContent: React.FunctionComponent<ChatMessageContentProps
             <RichMarkdown
                 markdown={displayContent}
                 isMessageLoading={isMessageLoading}
-                guardrails={guardrails}
                 onCopy={onCopy}
-                onInsert={onInsert}
                 onExecute={onExecute}
-                onRegenerate={onRegenerate}
-                regeneratingCodeBlocks={regeneratingCodeBlocks}
-                smartApply={smartApply}
                 className={clsx(styles.content, className)}
-                hasEditIntent={humanMessage?.intent === 'edit'}
             />
         </div>
     )

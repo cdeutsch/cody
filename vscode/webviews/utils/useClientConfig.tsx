@@ -1,4 +1,4 @@
-import type { CodyClientConfig } from '@sourcegraph/cody-shared'
+import type { ClientConfig } from '@sourcegraph/cody-shared'
 import {
     type ComponentProps,
     type FunctionComponent,
@@ -7,10 +7,10 @@ import {
     useContext,
 } from 'react'
 
-const ClientConfigContext = createContext<CodyClientConfig | null>(null)
+const ClientConfigContext = createContext<ClientConfig | null>(null)
 
 /**
- * React context provider whose `value` is the {@link CodyClientConfig}.
+ * React context provider whose `value` is the {@link ClientConfig}.
  */
 export const ClientConfigProvider: FunctionComponent<{
     value: ComponentProps<(typeof ClientConfigContext)['Provider']>['value']
@@ -20,8 +20,8 @@ export const ClientConfigProvider: FunctionComponent<{
 )
 
 /**
- * React hook for getting the {@link CodyClientConfig}.
+ * React hook for getting the {@link ClientConfig}.
  */
-export function useClientConfig(): CodyClientConfig | null {
+export function useClientConfig(): ClientConfig | null {
     return useContext(ClientConfigContext)
 }

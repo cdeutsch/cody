@@ -1,14 +1,7 @@
-import {
-    ClientConfigSingleton,
-    type DefaultChatCommands,
-    type EventSource,
-    type PromptString,
-} from '@sourcegraph/cody-shared'
+import type { DefaultChatCommands, EventSource, PromptString } from '@sourcegraph/cody-shared'
 import * as vscode from 'vscode'
 import type { ChatSession } from '../../chat/chat-view/ChatController'
 import type { WebviewSubmitMessage } from '../../chat/protocol'
-import { isUriIgnoredByContextFilterWithNotification } from '../../cody-ignore/context-filter'
-import { getEditor } from '../../editor/active-editor'
 
 export interface ExecuteChatArguments extends Omit<WebviewSubmitMessage, 'text' | 'editorState'> {
     source?: EventSource
@@ -18,29 +11,15 @@ export interface ExecuteChatArguments extends Omit<WebviewSubmitMessage, 'text' 
 }
 
 /**
- * Wrapper around the `cody.action.chat` command that can be used anywhere but with better type-safety.
+ * Wrapper around the `driver-ai.action.chat` command that can be used anywhere but with better type-safety.
  * This is also called by all the default commands (e.g., explain).
  */
 export const executeChat = async (args: ExecuteChatArguments): Promise<ChatSession | undefined> => {
-    const clientConfig = await ClientConfigSingleton.getInstance().getConfig()
     const isCommand = Boolean(args.command)
-    if (
-        (!isCommand && !clientConfig?.chatEnabled) ||
-        (isCommand && !clientConfig?.customCommandsEnabled)
-    ) {
-        void vscode.window.showErrorMessage(
-            'This feature has been disabled by your Sourcegraph site admin.'
-        )
+    if (!isCommand) {
+        void vscode.window.showErrorMessage('This feature has been disabled by your site admin.')
         return undefined
     }
 
-    const editor = getEditor()
-    if (
-        editor.active &&
-        (await isUriIgnoredByContextFilterWithNotification(editor.active.document.uri, 'command'))
-    ) {
-        return
-    }
-
-    return vscode.commands.executeCommand<ChatSession | undefined>('cody.action.chat', args)
+    return vscode.commands.executeCommand<ChatSession | undefined>('driver-ai.action.chat', args)
 }

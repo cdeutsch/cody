@@ -50,6 +50,7 @@ export const RepositorySelector = ({ onSelect }: IProps) => {
                                     }}
                                     className="tw-text-ellipsis !tw-line-clamp-1 tw-px-4 tw-py-2 tw-overflow-hidden hover:tw-bg-button-background-hover hover:tw-text-button-foreground tw-justify-between tw-items-center tw-cursor-pointer"
                                     role="button"
+                                    tabIndex={0}
                                     onKeyDown={e => {
                                         if (e.key === 'Enter') {
                                             onSelect(repo)

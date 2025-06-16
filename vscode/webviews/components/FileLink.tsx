@@ -1,3 +1,4 @@
+// cspell:ignore symf
 import { clsx } from 'clsx'
 import type React from 'react'
 
@@ -11,11 +12,9 @@ import {
 } from '@sourcegraph/cody-shared'
 
 import { BookCheckIcon } from 'lucide-react'
-import { useCallback, useMemo } from 'react'
+import { useMemo } from 'react'
 import type { URI } from 'vscode-uri'
 import { getVSCodeAPI } from '../utils/VSCodeApi'
-import { useTelemetryRecorder } from '../utils/telemetry'
-import { useOmniBox } from '../utils/useOmniBox'
 import styles from './FileLink.module.css'
 import { Button } from './shadcn/ui/button'
 
@@ -73,9 +72,7 @@ export const FileLink: React.FunctionComponent<
         if (source === 'unified') {
             const repoShortName = repoName?.slice(repoName.lastIndexOf('/') + 1)
             const pathToDisplay = `${title}`
-            const tooltip = `${repoName}${
-                revision ? `@${revision}` : ''
-            }\nincluded from Sourcegraph search`
+            const tooltip = `${repoName}${revision ? `@${revision}` : ''}\nincluded from Driver search`
             return {
                 pathWithRange: range ? `${pathToDisplay}:${displayLineRange(range)}` : pathToDisplay,
                 path: pathToDisplay,
@@ -117,34 +114,8 @@ export const FileLink: React.FunctionComponent<
     const iconTitle =
         source && hoverSourceLabels[source] ? `Included ${hoverSourceLabels[source]}` : undefined
 
-    const telemetryRecorder = useTelemetryRecorder()
-    const oneboxEnabled = useOmniBox()
-    const logClick = useCallback(() => {
-        if (!oneboxEnabled) {
-            return
-        }
-        const external = uri.scheme === 'http' || uri.scheme === 'https'
-        telemetryRecorder.recordEvent('onebox.searchResult', 'clicked', {
-            metadata: {
-                isLocal: external ? 0 : 1,
-                isRemote: external ? 1 : 0,
-            },
-            privateMetadata: {
-                filename: displayPath(uri),
-            },
-            billingMetadata: {
-                product: 'cody',
-                category: 'core',
-            },
-        })
-    }, [telemetryRecorder, oneboxEnabled, uri])
-
     return (
-        <div
-            className={clsx('tw-inline-flex tw-items-center tw-max-w-full', className)}
-            onClick={logClick}
-            onKeyDown={logClick}
-        >
+        <div className={clsx('tw-inline-flex tw-items-center tw-max-w-full', className)}>
             {(isIgnored || isTooLarge) && (
                 <i className="codicon codicon-warning" title={linkDetails.tooltip} />
             )}

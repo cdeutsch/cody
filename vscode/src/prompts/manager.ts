@@ -1,4 +1,4 @@
-import { type PromptMode, graphqlClient } from '@sourcegraph/cody-shared'
+import { type PromptMode, queryPrompts } from '@sourcegraph/cody-shared'
 import * as vscode from 'vscode'
 import type { ChatsController } from '../chat/chat-view/ChatsController'
 import { createQuickPick } from '../edit/input/quick-pick'
@@ -11,7 +11,7 @@ export class PromptsManager implements vscode.Disposable {
         this.chatsController = args.chatsController
 
         const executePrompt = vscode.commands.registerCommand(
-            'cody.command.execute-prompt',
+            'driver-ai.command.execute-prompt',
             this.showPromptsQuickPick
         )
         this.disposables.push(executePrompt)
@@ -19,7 +19,7 @@ export class PromptsManager implements vscode.Disposable {
 
     public showPromptsQuickPick = async (args: any): Promise<undefined> => {
         const getItems = async (query?: string) => {
-            const prompts = await graphqlClient.queryPrompts({
+            const prompts = await queryPrompts({
                 query: query || '',
                 first: 10,
                 recommendedOnly: false,

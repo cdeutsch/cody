@@ -2,7 +2,7 @@
   "private": true,
   "name": "@sourcegraph/cody",
   "description": "Cody, the code AI that writes code, fixes bugs, and answers questions using the code graph",
-  "license": "Apache-2.0",
+  "license": "UNLICENSED",
   "homepage": "https://cody.dev",
   "repository": {
     "type": "git",
@@ -86,7 +86,10 @@
       "@lexical/react": "https://storage.googleapis.com/sourcegraph-assets/npm/lexical-react-sourcegraph-fork-31065486.tgz",
       "pkce-challenge": "3.0.0"
     },
-    "neverBuiltDependencies": ["deasync", "playwright"],
+    "neverBuiltDependencies": [
+      "deasync",
+      "playwright"
+    ],
     "patchedDependencies": {
       "highlight.js@11.8.0": "patches/highlight.js@11.8.0.patch"
     }

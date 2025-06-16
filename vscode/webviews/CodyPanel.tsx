@@ -1,30 +1,22 @@
 import {
     type AuthStatus,
     type ChatMessage,
-    type ClientCapabilitiesWithLegacyFields,
-    type CodyNotice,
-    FeatureFlag,
-    type Guardrails,
-    type UserProductSubscription,
+    DriverIDE,
+    type PrimaryAssetRecord,
     type WebviewToExtensionAPI,
     firstValueFrom,
 } from '@sourcegraph/cody-shared'
-import { useExtensionAPI, useObservable } from '@sourcegraph/prompt-editor'
+import { useExtensionAPI } from '@sourcegraph/prompt-editor'
 import type React from 'react'
 import { type FunctionComponent, useEffect, useMemo, useRef } from 'react'
 import type { ConfigurationSubsetForWebview, LocalEnv } from '../src/chat/protocol'
 import styles from './App.module.css'
 import { Chat } from './Chat'
 import { useClientActionDispatcher } from './client/clientState'
-import { Notices } from './components/Notices'
 import { StateDebugOverlay } from './components/StateDebugOverlay'
-import type { ServerType } from './components/mcp'
-import { ServerHome, getMcpServerType } from './components/mcp/ServerHome'
 import { TabContainer, TabRoot } from './components/shadcn/ui/tabs'
 import { HistoryTab, TabsBar, View } from './tabs'
 import type { VSCodeWrapper } from './utils/VSCodeApi'
-import { useUserAccountInfo } from './utils/useConfig'
-import { useFeatureFlag } from './utils/useFeatureFlags'
 import { TabViewContext } from './utils/useTabView'
 
 interface CodyPanelProps {
@@ -32,62 +24,45 @@ interface CodyPanelProps {
     setView: (view: View) => void
     configuration: {
         config: LocalEnv & ConfigurationSubsetForWebview
-        clientCapabilities: ClientCapabilitiesWithLegacyFields
         authStatus: AuthStatus
-        isDotComUser: boolean
-        userProductSubscription?: UserProductSubscription | null | undefined
     }
-    errorMessages: string[]
-    chatEnabled: boolean
-    instanceNotices: CodyNotice[]
     messageInProgress: ChatMessage | null
     transcript: ChatMessage[]
-    vscodeAPI: Pick<VSCodeWrapper, 'postMessage' | 'onMessage'>
+    errorMessages: string[]
     setErrorMessages: (errors: string[]) => void
-    guardrails: Guardrails
-    showWelcomeMessage?: boolean
     showIDESnippetActions?: boolean
     onExternalApiReady?: (api: CodyExternalApi) => void
     onExtensionApiReady?: (api: WebviewToExtensionAPI) => void
+    vscodeAPI: Pick<VSCodeWrapper, 'postMessage' | 'onMessage'>
+    primaryAsset?: PrimaryAssetRecord
+    primaryAssetLoaded?: boolean
+    chatID?: string
 }
 
 /**
- * The Cody tab panel, with tabs for chat, history, prompts, etc.
+ * The Driver tab panel, with tabs for chat, history, prompts, etc.
  */
 export const CodyPanel: FunctionComponent<CodyPanelProps> = ({
     view,
     setView,
-    configuration: { config, clientCapabilities, isDotComUser },
+    configuration: { config },
     errorMessages,
     setErrorMessages,
-    chatEnabled,
-    instanceNotices,
+    showIDESnippetActions,
     messageInProgress,
     transcript,
     vscodeAPI,
-    showIDESnippetActions,
-    showWelcomeMessage,
     onExternalApiReady,
     onExtensionApiReady,
-    guardrails,
+    primaryAsset,
+    primaryAssetLoaded,
+    chatID,
 }) => {
     const tabContainerRef = useRef<HTMLDivElement>(null)
 
-    const user = useUserAccountInfo()
     const externalAPI = useExternalAPI()
     const api = useExtensionAPI()
-    const { value: chatModels } = useObservable(useMemo(() => api.chatModels(), [api.chatModels]))
-    const { value: mcpServers } = useObservable<ServerType[]>(
-        useMemo(
-            () => api.mcpSettings()?.map(servers => (servers || [])?.map(s => getMcpServerType(s))),
-            [api.mcpSettings]
-        )
-    )
-    // workspace upgrade eligibility should be that the flag is set, is on dotcom and only has one account. This prevents enterprise customers that are logged into multiple endpoints from seeing the CTA
-    const isWorkspacesUpgradeCtaEnabled =
-        useFeatureFlag(FeatureFlag.SourcegraphTeamsUpgradeCTA) &&
-        isDotComUser &&
-        config.endpointHistory?.length === 1
+
     useEffect(() => {
         onExternalApiReady?.(externalAPI)
     }, [onExternalApiReady, externalAPI])
@@ -95,22 +70,6 @@ export const CodyPanel: FunctionComponent<CodyPanelProps> = ({
     useEffect(() => {
         onExtensionApiReady?.(api)
     }, [onExtensionApiReady, api])
-
-    useEffect(() => {
-        const subscription = api.clientActionBroadcast().subscribe(action => {
-            switch (action.type) {
-                case 'open-recently-prompts': {
-                    document
-                        .querySelector<HTMLButtonElement>("button[aria-label='Insert prompt']")
-                        ?.click()
-                }
-            }
-        })
-
-        return () => {
-            subscription.unsubscribe()
-        }
-    }, [api.clientActionBroadcast])
 
     return (
         <TabViewContext.Provider value={useMemo(() => ({ view, setView }), [view, setView])}>
@@ -120,15 +79,11 @@ export const CodyPanel: FunctionComponent<CodyPanelProps> = ({
                 orientation="vertical"
                 className={styles.outerContainer}
             >
-                <Notices user={user} instanceNotices={instanceNotices} />
                 {/* Hide tab bar in editor chat panels. */}
                 {config.webviewType !== 'editor' && (
                     <TabsBar
-                        user={user}
                         currentView={view}
                         setView={setView}
-                        endpointHistory={config.endpointHistory ?? []}
-                        isWorkspacesUpgradeCtaEnabled={isWorkspacesUpgradeCtaEnabled}
                         showOpenInEditor={!!config?.multipleWebviewsEnabled}
                     />
                 )}
@@ -136,30 +91,27 @@ export const CodyPanel: FunctionComponent<CodyPanelProps> = ({
                 <TabContainer value={view} ref={tabContainerRef} data-scrollable>
                     {view === View.Chat && (
                         <Chat
-                            chatEnabled={chatEnabled}
+                            key={chatID}
+                            chatEnabled={true}
                             messageInProgress={messageInProgress}
                             transcript={transcript}
-                            models={chatModels || []}
                             vscodeAPI={vscodeAPI}
-                            guardrails={guardrails}
                             showIDESnippetActions={showIDESnippetActions}
-                            showWelcomeMessage={showWelcomeMessage}
                             scrollableParent={tabContainerRef.current}
                             setView={setView}
-                            isWorkspacesUpgradeCtaEnabled={isWorkspacesUpgradeCtaEnabled}
+                            primaryAsset={primaryAsset}
+                            primaryAssetLoaded={primaryAssetLoaded}
+                            chatID={chatID}
                         />
                     )}
                     {view === View.History && (
                         <HistoryTab
-                            IDE={clientCapabilities.agentIDE}
+                            IDE={DriverIDE.VSCode}
                             extensionAPI={api}
                             setView={setView}
                             webviewType={config.webviewType}
                             multipleWebviewsEnabled={config.multipleWebviewsEnabled}
                         />
-                    )}
-                    {view === View.Mcp && mcpServers?.length !== -1 && (
-                        <ServerHome mcpServers={mcpServers} />
                     )}
                 </TabContainer>
                 <StateDebugOverlay />

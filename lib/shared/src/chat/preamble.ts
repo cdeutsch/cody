@@ -2,7 +2,7 @@ import type { ChatModel, EditModel } from '../models/types'
 import { type PromptString, ps } from '../prompt/prompt-string'
 import type { Message } from '../sourcegraph-api'
 
-const DEFAULT_PREAMBLE = ps`You are Cody, an AI coding assistant from Sourcegraph.`
+const DEFAULT_PREAMBLE = ps`You are Driver, an AI coding assistant.`
 
 export function getDefaultSystemPrompt(): PromptString {
     return DEFAULT_PREAMBLE
@@ -24,7 +24,6 @@ export function getChatPreamble(): PromptString {
 
 export function getSimplePreamble(
     model: ChatModel | EditModel | undefined,
-    apiVersion: number,
     type: 'Chat' | 'Default',
     preInstruction?: PromptString
 ): Message[] {
@@ -33,14 +32,14 @@ export function getSimplePreamble(
 
     // API Version 1 onward support system prompts, however only enable it for
     // Claude 3 models for now
-    if (apiVersion >= 1 && model?.includes('claude-3')) {
-        return [
-            {
-                speaker: 'system',
-                text: intro,
-            },
-        ]
-    }
+    // if (apiVersion >= 1 && model?.includes('claude-3')) {
+    //   return [
+    //     {
+    //       speaker: 'system',
+    //       text: intro,
+    //     },
+    //   ];
+    // }
 
     return [
         {
@@ -49,7 +48,7 @@ export function getSimplePreamble(
         },
         {
             speaker: 'assistant',
-            text: ps`I am Cody, an AI coding assistant from Sourcegraph.`,
+            text: ps`I am Driver, an AI coding assistant.`,
         },
     ]
 }

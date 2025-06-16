@@ -48,13 +48,88 @@ a:hover {
     width: 100%;
 }
 
-.cody-chat-error {
+.driver-chat-error {
     color: var(--vscode-input-foreground);
     background-color: var(--vscode-inputValidation-errorBackground);
     padding: 0.5rem;
 }
 
-.cody-chat-error > span {
+.driver-chat-error > span {
     font-weight: bold;
 }
 
+.tw-prose-sm {
+    font-size: 13px;
+}
+
+/* Originally copied from webapp-frontend, but modified to look like Copilot */
+.tw-prose h1 {
+  /* font-size: 1.875rem; */
+    font-weight: 600;
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+    line-height: 1.2;
+}
+
+.tw-prose h2 {
+  /* font-size: 1.5rem; */
+    font-weight: 600;
+    margin-top: 1.5rem;
+    margin-bottom: 0.75rem;
+    line-height: 1.2;
+}
+
+.tw-prose h3 {
+  /* font-size: 1.25rem; */
+    font-weight: 600;
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+    line-height: 1.2;
+}
+
+.tw-prose h1 strong,
+.tw-prose h2 strong,
+.tw-prose h3 strong {
+    font-weight: 600;
+}
+
+.tw-prose p {
+    margin-top: 0.15rem;
+    margin-bottom: 0.75rem;
+}
+
+.tw-prose li {
+    margin: 0;
+    padding: 0;
+}
+
+.tw-prose li > p {
+    margin-top: 0rem;
+    margin-bottom: 0rem;
+}
+
+.tw-prose ul,
+.tw-prose ol {
+    margin-top: 0.15rem;
+    margin-bottom: 0.75rem;
+}
+
+.tw-prose hr {
+    border-top-color: hsl(var(--primary) / 0.2);
+    margin-top: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.tw-prose table,
+.tw-prose table td,
+.tw-prose table th {
+    border: 1px solid var(--vscode-chat-requestBorder);
+    border-collapse: collapse;
+    padding: 4px 6px;
+}
+
+.tw-prose table td p,
+.tw-prose table th p {
+    margin: 0;
+    padding: 0;
+}

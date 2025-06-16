@@ -1,22 +1,17 @@
 // Network patch must be imported first
-import './net/net.patch'
+// import './net/net.patch'
 
 // Sentry should be imported as soon as possible so that errors are reported
-import { NodeSentryService } from './services/sentry/sentry.node'
+// import { NodeSentryService } from './services/sentry/sentry.node'
 
 // Everything else
 import type { LogEntry as NoxLogEntry, Noxide } from '@sourcegraph/cody-noxide'
 import { logDebug, logError } from '@sourcegraph/cody-shared'
 import * as vscode from 'vscode'
-import { startTokenReceiver } from './auth/token-receiver'
-import { CommandsProvider } from './commands/services/provider'
-import { SourcegraphNodeCompletionsClient } from './completions/nodeClient'
 import type { ExtensionApi } from './extension-api'
 import { type ExtensionClient, defaultVSCodeExtensionClient } from './extension-client'
 import { activate as activateCommon } from './extension.common'
 import { SymfRunner } from './local-context/symf'
-import { DelegatingAgent } from './net'
-import { OpenTelemetryService } from './services/open-telemetry/OpenTelemetryService.node'
 
 /**
  * Activation entrypoint for the VS Code extension when running VS Code as a desktop app
@@ -34,25 +29,18 @@ export function activate(
         .getConfiguration()
         .get<boolean>('cody.experimental.symf.enabled', true)
 
-    const isTelemetryEnabled = vscode.workspace
-        .getConfiguration()
-        .get<boolean>('cody.experimental.telemetry.enabled', true)
-
     const isNoxideLibEnabled = vscode.workspace
         .getConfiguration()
         .get<boolean>('cody.experimental.noxide.enabled', true)
 
     return activateCommon(context, {
-        initializeNetworkAgent: DelegatingAgent.initialize,
+        // initializeNetworkAgent: DelegatingAgent.initialize,
         initializeNoxideLib: isNoxideLibEnabled ? loadNoxideLib : undefined,
-        createCompletionsClient: (...args) => new SourcegraphNodeCompletionsClient(...args),
-        createCommandsProvider: () => new CommandsProvider(),
+        // createCompletionsClient: (...args) => new SourcegraphNodeCompletionsClient(...args),
+        // createCommandsProvider: () => new CommandsProvider(),
         createSymfRunner: isSymfEnabled ? (...args) => new SymfRunner(...args) : undefined,
-        createSentryService: (...args) => new NodeSentryService(...args),
-        createOpenTelemetryService: isTelemetryEnabled
-            ? (...args) => new OpenTelemetryService(...args)
-            : undefined,
-        startTokenReceiver: (...args) => startTokenReceiver(...args),
+        // createSentryService: (...args) => new NodeSentryService(...args),
+        // startTokenReceiver: (...args) => startTokenReceiver(...args),
         extensionClient,
     })
 }

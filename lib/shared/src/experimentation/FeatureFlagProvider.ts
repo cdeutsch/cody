@@ -15,7 +15,6 @@ import {
     storeLastValue,
     switchMap,
 } from '../misc/observable'
-import { graphqlClient } from '../sourcegraph-api/graphql'
 import { wrapInActiveSpan } from '../tracing'
 import { isError } from '../utils'
 
@@ -25,91 +24,91 @@ export enum FeatureFlag {
     TestFlagDoNotUse = 'test-flag-do-not-use',
 
     // Enable both-client side and server-side tracing
-    CodyAutocompleteTracing = 'cody-autocomplete-tracing',
+    DriverAutocompleteTracing = 'driver-autocomplete-tracing',
     // This flag is used to track the overall eligibility to use the StarCoder model. The `-hybrid`
     // suffix is no longer relevant
-    CodyAutocompleteStarCoderHybrid = 'cody-autocomplete-default-starcoder-hybrid',
+    DriverAutocompleteStarCoderHybrid = 'driver-autocomplete-default-starcoder-hybrid',
     // Enable the deepseek-v2 as the default model via Fireworks
-    CodyAutocompleteDeepseekV2LiteBase = 'cody-autocomplete-deepseek-v2-lite-base',
+    DriverAutocompleteDeepseekV2LiteBase = 'driver-autocomplete-deepseek-v2-lite-base',
 
     // Data collection variants used for completions and next edit completions
-    CodyAutocompleteDataCollectionFlag = 'cody-autocomplete-logs-collection-flag',
-    SmartApplyContextDataCollectionFlag = 'cody-smart-apply-context-logs-collection-flag',
-    EditContextDataCollectionFlag = 'cody-edit-context-logs-collection-flag',
+    DriverAutocompleteDataCollectionFlag = 'driver-autocomplete-logs-collection-flag',
+    SmartApplyContextDataCollectionFlag = 'driver-smart-apply-context-logs-collection-flag',
+    EditContextDataCollectionFlag = 'driver-edit-context-logs-collection-flag',
 
     // Enables fast-path HTTP client for PLG-users
-    CodyAutocompleteFastPath = 'cody-autocomplete-fast-path',
+    DriverAutocompleteFastPath = 'driver-autocomplete-fast-path',
 
     // Enable various feature flags to experiment with FIM trained fine-tuned models via Fireworks
-    CodyAutocompleteFIMModelExperimentBaseFeatureFlag = 'cody-autocomplete-model-v2-experiment-flag',
-    CodyAutocompleteFIMModelExperimentControl = 'cody-autocomplete-model-experiment-control',
-    CodyAutocompleteFIMModelExperimentCurrentBest = 'cody-autocomplete-model-experiment-current-best',
-    CodyAutocompleteFIMModelExperimentVariant1 = 'cody-autocomplete-model-experiment-variant-1',
-    CodyAutocompleteFIMModelExperimentVariant2 = 'cody-autocomplete-model-experiment-variant-2',
-    CodyAutocompleteFIMModelExperimentVariant3 = 'cody-autocomplete-model-experiment-variant-3',
-    CodyAutocompleteFIMModelExperimentVariant4 = 'cody-autocomplete-model-experiment-variant-4',
+    DriverAutocompleteFIMModelExperimentBaseFeatureFlag = 'driver-autocomplete-model-v2-experiment-flag',
+    DriverAutocompleteFIMModelExperimentControl = 'driver-autocomplete-model-experiment-control',
+    DriverAutocompleteFIMModelExperimentCurrentBest = 'driver-autocomplete-model-experiment-current-best',
+    DriverAutocompleteFIMModelExperimentVariant1 = 'driver-autocomplete-model-experiment-variant-1',
+    DriverAutocompleteFIMModelExperimentVariant2 = 'driver-autocomplete-model-experiment-variant-2',
+    DriverAutocompleteFIMModelExperimentVariant3 = 'driver-autocomplete-model-experiment-variant-3',
+    DriverAutocompleteFIMModelExperimentVariant4 = 'driver-autocomplete-model-experiment-variant-4',
 
-    CodyAutocompleteContextExperimentBaseFeatureFlag = 'cody-autocomplete-context-experiment-flag',
-    CodyAutocompleteContextExperimentVariant1 = 'cody-autocomplete-context-experiment-variant-1',
-    CodyAutocompleteContextExperimentVariant2 = 'cody-autocomplete-context-experiment-variant-2',
-    CodyAutocompleteContextExperimentVariant3 = 'cody-autocomplete-context-experiment-variant-3',
-    CodyAutocompleteContextExperimentVariant4 = 'cody-autocomplete-context-experiment-variant-4',
-    CodyAutocompleteContextExperimentControl = 'cody-autocomplete-context-experiment-control',
+    DriverAutocompleteContextExperimentBaseFeatureFlag = 'driver-autocomplete-context-experiment-flag',
+    DriverAutocompleteContextExperimentVariant1 = 'driver-autocomplete-context-experiment-variant-1',
+    DriverAutocompleteContextExperimentVariant2 = 'driver-autocomplete-context-experiment-variant-2',
+    DriverAutocompleteContextExperimentVariant3 = 'driver-autocomplete-context-experiment-variant-3',
+    DriverAutocompleteContextExperimentVariant4 = 'driver-autocomplete-context-experiment-variant-4',
+    DriverAutocompleteContextExperimentControl = 'driver-autocomplete-context-experiment-control',
 
-    CodySmartApplyInstantModeEnabled = 'cody-smart-apply-instant-mode-enabled',
-    CodySmartApplyExperimentEnabledFeatureFlag = 'cody-smart-apply-experiment-enabled-flag',
-    CodySmartApplyExperimentVariant1 = 'cody-smart-apply-experiment-variant-1',
-    CodySmartApplyExperimentVariant2 = 'cody-smart-apply-experiment-variant-2',
-    CodySmartApplyExperimentVariant3 = 'cody-smart-apply-experiment-variant-3',
-    CodySmartApplyPrefetching = 'cody-smart-apply-prefetching',
+    DriverSmartApplyInstantModeEnabled = 'driver-smart-apply-instant-mode-enabled',
+    DriverSmartApplyExperimentEnabledFeatureFlag = 'driver-smart-apply-experiment-enabled-flag',
+    DriverSmartApplyExperimentVariant1 = 'driver-smart-apply-experiment-variant-1',
+    DriverSmartApplyExperimentVariant2 = 'driver-smart-apply-experiment-variant-2',
+    DriverSmartApplyExperimentVariant3 = 'driver-smart-apply-experiment-variant-3',
+    DriverSmartApplyPrefetching = 'driver-smart-apply-prefetching',
 
-    CodyAutoEditExperimentEnabledFeatureFlag = 'cody-autoedit-experiment-enabled-flag',
+    DriverAutoEditExperimentEnabledFeatureFlag = 'driver-autoedit-experiment-enabled-flag',
 
     // Enables hot-streak for autoedit suggestions
-    CodyAutoEditHotStreak = 'cody-autoedit-hot-streak-v2',
+    DriverAutoEditHotStreak = 'driver-autoedit-hot-streak-v2',
 
     // Enables gpt-4o-mini as a default Edit model
-    CodyEditDefaultToGpt4oMini = 'cody-edit-default-to-gpt-4o-mini',
+    DriverEditDefaultToGpt4oMini = 'driver-edit-default-to-gpt-4o-mini',
 
     // Enables Claude 3.5 Haiku as a default Chat model
-    CodyChatDefaultToClaude35Haiku = 'cody-chat-default-to-claude-3-5-haiku',
+    DriverChatDefaultToClaude35Haiku = 'driver-chat-default-to-claude-3-5-haiku',
 
-    // use-ssc-for-cody-subscription is a feature flag that enables the use of SSC as the source of truth for Cody subscription data.
-    UseSscForCodySubscription = 'use-ssc-for-cody-subscription',
+    // use-ssc-for-driver-subscription is a feature flag that enables the use of SSC as the source of truth for Driver subscription data.
+    UseSscForDriverSubscription = 'use-ssc-for-driver-subscription',
 
-    // cody-pro-trial-ended is a feature flag that indicates if the Cody Pro "Free Trial"  has ended.
-    // (Enabling users to use Cody Pro for free for 3-months starting in late Q4'2023.)
-    CodyProTrialEnded = 'cody-pro-trial-ended',
+    // driver-pro-trial-ended is a feature flag that indicates if the Driver Pro "Free Trial"  has ended.
+    // (Enabling users to use Driver Pro for free for 3-months starting in late Q4'2023.)
+    DriverProTrialEnded = 'driver-pro-trial-ended',
 
     GitMentionProvider = 'git-mention-provider',
 
-    /** Enable debug mode for One Box feature in Cody */
-    CodyExperimentalOneBoxDebug = 'cody-experimental-one-box-debug',
+    /** Enable debug mode for One Box feature in Driver */
+    DriverExperimentalOneBoxDebug = 'driver-experimental-one-box-debug',
     /** Enable use of new prosemirror prompt editor */
-    CodyExperimentalPromptEditor = 'cody-experimental-prompt-editor',
+    DriverExperimentalPromptEditor = 'driver-experimental-prompt-editor',
 
-    /** Whether user has access to early-acess models. */
-    CodyEarlyAccess = 'cody-early-access',
+    /** Whether user has access to early-access models. */
+    DriverEarlyAccess = 'driver-early-access',
 
     /**
      * Enables experimental unified prompts (show no commands and include
      * some standard out-of-the-box prompts like documentation and explain code prompts)
      */
-    CodyUnifiedPrompts = 'cody-unified-prompts',
-    CodyDeepSeekChat = 'cody-deepseek-chat',
+    DriverUnifiedPrompts = 'driver-unified-prompts',
+    DriverDeepSeekChat = 'driver-deepseek-chat',
 
-    // Enables Anthropic's prompt caching feature on messages for Cody Clients
-    CodyPromptCachingOnMessages = 'cody-experimental-prompt-caching-on-messages',
+    // Enables Anthropic's prompt caching feature on messages for Driver Clients
+    DriverPromptCachingOnMessages = 'driver-experimental-prompt-caching-on-messages',
 
-    /** Whether user has access to the experimental agentic chat (fka Deep Cody) feature.
-     * This replaces the old 'cody-deep-reflection' & 'deep-cody' that was used for internal testing.
+    /** Whether user has access to the experimental agentic chat (fka Deep Driver) feature.
+     * This replaces the old 'driver-deep-reflection' & 'deep-driver' that was used for internal testing.
      */
-    DeepCody = 'agentic-chat-experimental',
+    DeepDriver = 'agentic-chat-experimental',
 
     /** Enable terminal access for agentic context */
-    DeepCodyShellContext = 'agentic-chat-cli-tool-experimental',
+    DeepDriverShellContext = 'agentic-chat-cli-tool-experimental',
 
-    /** Whether Context Agent (Deep Cody) should use the default chat model or 3.5 Haiku */
+    /** Whether Context Agent (Deep Driver) should use the default chat model or 3.5 Haiku */
     ContextAgentDefaultChatModel = 'agentic-chat-use-default-chat-model',
 
     /**
@@ -130,17 +129,17 @@ export enum FeatureFlag {
     /**
      * Use websocket to connect to LLM providers (only fireworks provider for auto-edit currently). The websocket address
      * is configured with the following setting.
-     * "cody.experimental.autoedit.config.override": {
+     * "driver.experimental.autoedit.config.override": {
      *   "provider": "fireworks-websocket"
      *   "webSocketEndpoint": "ws://0.0.0.0:3000",
      * }
-     * When enabled, Cody connects to a WebSocket to HTTP proxy which connects to fireworks directly.
+     * When enabled, Driver connects to a WebSocket to HTTP proxy which connects to fireworks directly.
      * Both the WebSocket connection and HTTP (from proxy) use long-lived connection to reduce cross-request
      * latency.
      */
-    CodyAutoEditUseWebSocketForFireworksConnections = 'auto-edit-use-web-socket-for-connections',
+    DriverAutoEditUseWebSocketForFireworksConnections = 'auto-edit-use-web-socket-for-connections',
 
-    // Extend context window for Cody Clients
+    // Extend context window for Driver Clients
     EnhancedContextWindow = 'enhanced-context-window',
 
     // Fallback to Flash when rate limited
@@ -153,12 +152,12 @@ export enum FeatureFlag {
     NextAgenticChatInternal = 'next-agentic-chat-internal',
 
     /**
-     * Allow Deep Cody to use MCP tools during context fetching steps.
+     * Allow Deep Driver to use MCP tools during context fetching steps.
      */
     AgenticChatWithMCP = 'agentic-chat-mcp-enabled',
 
     /**
-     * Disable agentic context for chat - Deep Cody disabled
+     * Disable agentic context for chat - Deep Driver disabled
      * When set to true, context will not be added to chat automatically.
      */
     AgenticContextDisabled = 'agentic-context-disabled',
@@ -199,7 +198,7 @@ export class FeatureFlagProviderImpl implements FeatureFlagProvider {
      * The first key maps to the endpoint so that we never cache the wrong flag for different
      * endpoints.
      */
-    private cache: Record<string, Record<string, boolean>> = {}
+    private cache: Record<string, boolean> | undefined = undefined
 
     private refreshRequests = new Subject<void>()
     private refreshes: Observable<void> = combineLatest(
@@ -208,13 +207,11 @@ export class FeatureFlagProviderImpl implements FeatureFlagProvider {
     ).pipe(map(() => undefined))
 
     private relevantAuthStatusChanges: Observable<
-        Pick<AuthStatus, 'authenticated' | 'endpoint'> &
-            Partial<Pick<AuthenticatedAuthStatus, 'username'>>
+        Pick<AuthStatus, 'authenticated'> & Partial<Pick<AuthenticatedAuthStatus, 'user'>>
     > = authStatus.pipe(
         map(authStatus => ({
             authenticated: authStatus.authenticated,
-            endpoint: authStatus.endpoint,
-            username: authStatus.authenticated ? authStatus.username : undefined,
+            user: authStatus.authenticated ? authStatus.user : undefined,
         })),
         distinctUntilChanged()
     )
@@ -225,10 +222,9 @@ export class FeatureFlagProviderImpl implements FeatureFlagProvider {
     ).pipe(
         debounceTime(0),
         switchMap(([authStatus]) =>
-            promiseFactoryToObservable(signal =>
-                process.env.DISABLE_FEATURE_FLAGS
-                    ? Promise.resolve({})
-                    : graphqlClient.getEvaluatedFeatureFlags(signal)
+            promiseFactoryToObservable(
+                // FUTURE: Support server-side feature flags?
+                signal => (process.env.DISABLE_FEATURE_FLAGS ? Promise.resolve({}) : Promise.resolve({})) // graphqlClient.getEvaluatedFeatureFlags(signal)
             ).pipe(
                 map(resultOrError => {
                     if (isError(resultOrError)) {
@@ -241,7 +237,7 @@ export class FeatureFlagProviderImpl implements FeatureFlagProvider {
 
                     // Cache so that FeatureFlagProvider.getExposedExperiments can return these synchronously.
                     const result = isError(resultOrError) ? {} : resultOrError
-                    this.cache[authStatus.endpoint] = result
+                    this.cache = result
                     return result
                 })
             )
@@ -251,7 +247,7 @@ export class FeatureFlagProviderImpl implements FeatureFlagProvider {
     )
 
     public getExposedExperiments(serverEndpoint: string): Record<string, boolean> {
-        return this.cache[serverEndpoint] || {}
+        return this.cache || {}
     }
 
     /**
@@ -293,19 +289,18 @@ export class FeatureFlagProviderImpl implements FeatureFlagProvider {
                                         return false
                                     }
 
-                                    const cachedValue =
-                                        this.cache[authStatus.endpoint]?.[flagName.toString()]
+                                    const cachedValue = this.cache?.[flagName.toString()]
                                     if (cachedValue !== undefined) {
                                         // We'll immediately return the cached value and then start observing
                                         // for updates.
                                         return cachedValue
                                     }
 
-                                    const result = await graphqlClient.evaluateFeatureFlag(
-                                        flagName,
-                                        signal
-                                    )
-                                    return isError(result) ? false : result ?? false
+                                    // FUTURE: Support server-side feature flags?
+                                    // const result = await graphqlClient.evaluateFeatureFlag(flagName, signal);
+                                    // return isError(result) ? false : (result ?? false);
+
+                                    return false
                                 }),
                                 this.evaluatedFeatureFlags.pipe(
                                     map(featureFlags => Boolean(featureFlags[flagName.toString()]))

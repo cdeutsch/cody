@@ -1,118 +1,54 @@
-import _, { isEqual } from 'lodash'
+// cspell:ignore symf
+import type { AxiosError } from 'axios'
 import { filter, map } from 'observable-fns'
 import * as vscode from 'vscode'
 
 import {
-    type ChatClient,
-    ClientConfigSingleton,
     type ConfigurationInput,
-    DOTCOM_URL,
-    type DefaultCodyCommands,
-    FeatureFlag,
-    NEVER,
-    PromptString,
-    type ResolvedConfiguration,
-    type SourcegraphGuardrailsClient,
-    authStatus,
-    catchError,
-    clientCapabilities,
     combineLatest,
-    contextFiltersProvider,
-    createDisposables,
     currentAuthStatus,
-    currentUserProductSubscription,
+    currentResolvedConfig,
     distinctUntilChanged,
-    featureFlagProvider,
     fromVSCodeEvent,
-    graphqlClient,
-    isDotCom,
+    getGlobalApi,
+    initializeGlobalApi,
     modelsService,
     resolvedConfig,
     setClientCapabilities,
     setClientNameVersion,
     setEditorWindowIsFocused,
     setLogger,
-    setOpenCtxControllerObservable,
     setResolvedConfigurationObservable,
     startWith,
     subscriptionDisposable,
-    switchMap,
-    take,
 } from '@sourcegraph/cody-shared'
 
 import { isReinstalling } from '../uninstall/reinstall'
 
-import type { CommandResult } from './CommandResult'
-import { showAccountMenu } from './auth/account-menu'
-import {
-    requestEndpointSettingsDeliveryToSearchPlugin,
-    showSignInMenu,
-    showSignOutMenu,
-    tokenCallbackHandler,
-} from './auth/auth'
-import { createAutoEditsProvider } from './autoedits/create-autoedits-provider'
-import { autoeditDebugStore } from './autoedits/debug-panel/debug-store'
-import { autoeditsOutputChannelLogger } from './autoedits/output-channel-logger'
-import type { MessageProviderOptions } from './chat/MessageProvider'
-import { CodyToolProvider } from './chat/agentic/CodyToolProvider'
-import { ChatsController, CodyChatEditorViewType } from './chat/chat-view/ChatsController'
+import { showSignInMenu, showSignOutMenu, tokenCallbackHandler } from './auth/auth'
+import { ChatsController } from './chat/chat-view/ChatsController'
 import { ContextRetriever } from './chat/chat-view/ContextRetriever'
-import { SourcegraphRemoteFileProvider } from './chat/chat-view/sourcegraphRemoteFile'
-import { MCPManager } from './chat/chat-view/tools/MCPManager'
-import { ACCOUNT_LIMITS_INFO_URL, ACCOUNT_UPGRADE_URL, CODY_FEEDBACK_URL } from './chat/protocol'
 import { CodeActionProvider } from './code-actions/CodeActionProvider'
-import { commandControllerInit, executeCodyCommand } from './commands/CommandsController'
-import { GhostHintDecorator } from './commands/GhostHintDecorator'
-import {
-    executeDocCommand,
-    executeExplainCommand,
-    executeExplainOutput,
-    executeSmellCommand,
-    executeTestCaseEditCommand,
-    executeTestEditCommand,
-} from './commands/execute'
-import { executeDocChatCommand } from './commands/execute/doc'
-import { executeTestChatCommand } from './commands/execute/test-chat'
-import { CodySourceControl } from './commands/scm/source-control'
-import type { CodyCommandArgs } from './commands/types'
-import { newCodyCommandArgs } from './commands/utils/get-commands'
-import { createInlineCompletionItemProvider } from './completions/create-inline-completion-item-provider'
+
+import { resolveAuth } from '@sourcegraph/cody-shared/src/configuration/auth-resolver'
+import { ChatSidebarViewType } from './chat/chat-view/ChatController'
 import { getConfiguration } from './configuration'
-import { observeOpenCtxController } from './context/openctx'
 import { logGlobalStateEmissions } from './dev/helpers'
-import { EditGuardrails } from './edit/edit-guardrails'
-import { EditManager } from './edit/edit-manager'
-import { SmartApplyManager } from './edit/smart-apply-manager'
 import { manageDisplayPathEnvInfoForExtension } from './editor/displayPathEnvInfo'
 import { VSCodeEditor } from './editor/vscode-editor'
+import { defaultVSCodeExtensionClient } from './extension-client'
 import type { PlatformContext } from './extension.common'
 import { configureExternalServices } from './external-services'
-import { isRunningInsideAgent } from './jsonrpc/isRunningInsideAgent'
-import { FixupController } from './non-stop/FixupController'
-import { CodyProExpirationNotifications } from './notifications/cody-pro-expiration'
-import { showSetupNotification } from './notifications/setup-notification'
 import { logDebug, logError } from './output-channel-logger'
-import { PromptsManager } from './prompts/manager'
 import { initVSCodeGitApi } from './repository/git-extension-api'
 import { authProvider } from './services/AuthProvider'
-import { charactersLogger } from './services/CharactersLogger'
-import { CodyTerminal } from './services/CodyTerminal'
-import { showFeedbackSupportQuickPick } from './services/FeedbackOptions'
 import { displayHistoryQuickPick } from './services/HistoryChat'
 import { localStorage } from './services/LocalStorageProvider'
-import { NetworkDiagnostics } from './services/NetworkDiagnostics'
 import { VSCodeSecretStorage, secretStorage } from './services/SecretStorageProvider'
-import { registerSidebarCommands } from './services/SidebarCommands'
 import { CodyStatusBar } from './services/StatusBar'
-import { createOrUpdateTelemetryRecorderProvider } from './services/telemetry-v2'
-import {
-    enableVerboseDebugMode,
-    exportOutputLog,
-    openCodyOutputChannel,
-} from './services/utils/export-logs'
-import { dumpCodyHeapSnapshot } from './services/utils/heap-dump'
-import { openCodyIssueReporter } from './services/utils/issue-reporter'
-import { SupercompletionProvider } from './supercompletions/supercompletion-provider'
+import { exportOutputLog } from './services/utils/export-logs'
+import { dumpDriverHeapSnapshot } from './services/utils/heap-dump'
+import { openDriverIssueReporter } from './services/utils/issue-reporter'
 import { parseAllVisibleDocuments, updateParseTreeOnEdit } from './tree-sitter/parse-tree-cache'
 import { version } from './version'
 
@@ -153,7 +89,7 @@ export async function start(
             fromVSCodeEvent(vscode.workspace.onDidChangeConfiguration).pipe(
                 filter(
                     event =>
-                        event.affectsConfiguration('cody') ||
+                        event.affectsConfiguration('driver-ai') ||
                         event.affectsConfiguration('openctx') ||
                         event.affectsConfiguration('http')
                 ),
@@ -178,22 +114,20 @@ export async function start(
                             onReinstall: async () => {
                                 // short circuit so that we only run this cleanup once, not every time the config updates
                                 if (hasReinstallCleanupRun) return
-                                logDebug('start', 'Reinstalling Cody')
+                                logDebug('start', 'Reinstalling Driver')
                                 // VSCode does not provide a way to simply clear all secrets
                                 // associated with the extension (https://github.com/microsoft/vscode/issues/123817)
                                 // So we have to build a list of all endpoints we'd expect to have been populated
                                 // and clear them individually.
-                                const history = await localStorage.deleteEndpointHistory()
-                                const additionalEndpointsToClear = [
-                                    clientConfiguration.overrideServerEndpoint,
-                                    clientState.lastUsedEndpoint,
-                                    DOTCOM_URL.toString(),
-                                ].filter(_.isString)
-                                await Promise.all(
-                                    history
-                                        .concat(additionalEndpointsToClear)
-                                        .map(clientSecrets.deleteToken.bind(clientSecrets))
-                                )
+                                // const history = await localStorage.deleteEndpointHistory();
+                                // const additionalEndpointsToClear = [
+                                //   clientConfiguration.overrideServerEndpoint,
+                                //   clientState.lastUsedEndpoint,
+                                //   DOTCOM_URL.toString(),
+                                // ].filter(_.isString);
+                                // await Promise.all(
+                                //   history.concat(additionalEndpointsToClear).map(clientSecrets.deleteToken.bind(clientSecrets))
+                                // );
                                 hasReinstallCleanupRun = true
                             },
                         },
@@ -208,7 +142,6 @@ export async function start(
         disposables.push(logGlobalStateEmissions())
     }
 
-    disposables.push(createOrUpdateTelemetryRecorderProvider(isExtensionModeDevOrTest))
     disposables.push(await register(context, platform, isExtensionModeDevOrTest))
     return vscode.Disposable.from(...disposables)
 }
@@ -227,14 +160,35 @@ const register = async (
         newClientVersion: platform.extensionClient.clientVersion,
     })
 
+    const config = vscode.workspace.getConfiguration()
+    const baseUrl = config.get<string>('driver-ai.apiUrl') || 'https://api.us1.driverai.com'
+
+    initializeGlobalApi({ baseUrl })
+
+    // Add response interceptor for error handling
+    getGlobalApi().interceptors.response.use(
+        response => response,
+        async (error: AxiosError) => {
+            if (error.response?.status === 401) {
+                // void vscode.window.showErrorMessage('Authentication required');
+                const { configuration } = await currentResolvedConfig()
+                const auth = await resolveAuth(configuration, secretStorage)
+                const authStatus = await authProvider.validateAndStoreCredentials(auth, 'always-store')
+                if (!authStatus.authenticated) {
+                    // Delete the token from the storage.
+                    await secretStorage.deleteToken()
+                }
+            }
+            return Promise.reject(error)
+        }
+    )
+
     // Initialize `displayPath` first because it might be used to display paths in error messages
     // from the subsequent initialization.
     disposables.push(manageDisplayPathEnvInfoForExtension())
 
     // Initialize singletons
     await initializeSingletons(platform, disposables)
-
-    setOpenCtxControllerObservable(observeOpenCtxController(context, platform.createOpenCtxController))
 
     // Ensure Git API is available
     disposables.push(await initVSCodeGitApi())
@@ -243,95 +197,43 @@ const register = async (
 
     // Initialize external services
     const {
-        chatClient,
-        completionsClient,
-        guardrails,
+        // chatClient,
+        // completionsClient,
+        // guardrails,
         symfRunner,
         dispose: disposeExternalServices,
     } = await configureExternalServices(context, platform)
     disposables.push({ dispose: disposeExternalServices })
 
     const editor = new VSCodeEditor()
-    const contextRetriever = new ContextRetriever(editor, symfRunner, completionsClient)
+    const contextRetriever = new ContextRetriever(editor, symfRunner)
 
     const { chatsController } = registerChat(
         {
             context,
-            platform,
-            chatClient,
-            guardrails,
             editor,
             contextRetriever,
         },
         disposables
     )
-    const fixupController = new FixupController(platform.extensionClient)
-    const ghostHintDecorator = new GhostHintDecorator({ fixupController })
-    const editManager = new EditManager({
-        chatClient,
-        editor,
-        fixupController,
-        guardrails: new EditGuardrails(guardrails),
-    })
-    const smartApplyManager = new SmartApplyManager({ editManager, chatClient })
-
-    CodyToolProvider.initialize(contextRetriever)
-
-    disposables.push(chatsController, ghostHintDecorator, editManager, smartApplyManager)
+    disposables.push(chatsController)
 
     const statusBar = CodyStatusBar.init()
     disposables.push(statusBar)
 
-    disposables.push(
-        NetworkDiagnostics.init({
-            statusBar,
-            agent: platform.networkAgent ?? null,
-            authProvider,
-        })
-    )
-
-    registerAutocomplete(platform, statusBar, disposables)
-    await registerCodyCommands({ statusBar, chatClient, fixupController, disposables, context })
     registerAuthCommands(disposables)
     registerChatCommands(disposables)
-    disposables.push(...registerSidebarCommands())
-    registerOtherCommands(disposables)
-    if (clientCapabilities().isVSCode) {
-        registerVSCodeOnlyFeatures(chatClient, disposables)
-    }
-    if (isExtensionModeDevOrTest) {
-        await registerTestCommands(context, disposables)
-    }
+    // if (isExtensionModeDevOrTest) {
+    //   await registerTestCommands(context, disposables);
+    // }
     registerDebugCommands(context, disposables)
     registerUpgradeHandlers(disposables)
-    disposables.push(charactersLogger)
 
     // INC-267 do NOT await on this promise. This promise triggers
     // `vscode.window.showInformationMessage()`, which only resolves after the
     // user has clicked on "Setup". Awaiting on this promise will make the Cody
     // extension timeout during activation.
-    resolvedConfig.pipe(take(1)).subscribe(({ auth }) => showSetupNotification(auth))
-
-    // Initialize MCP Manager based on the feature flag
-    disposables.push(
-        subscriptionDisposable(
-            combineLatest(
-                featureFlagProvider.evaluatedFeatureFlag(FeatureFlag.AgenticChatWithMCP),
-                featureFlagProvider.evaluatedFeatureFlag(FeatureFlag.AgenticContextDisabled)
-            )
-                .pipe(
-                    map(([mcpEnabled, agenticDisabled]) => mcpEnabled && !agenticDisabled),
-                    distinctUntilChanged()
-                )
-                .subscribe(async isEnabled => {
-                    if (isEnabled) {
-                        await MCPManager?.init()
-                    } else {
-                        MCPManager?.dispose()
-                    }
-                })
-        )
-    )
+    // resolvedConfig.pipe(take(1)).subscribe(({ auth }) => showSetupNotification(auth))
 
     // Save config for `deactivate` handler.
     disposables.push(
@@ -349,7 +251,7 @@ async function initializeSingletons(
     platform: PlatformContext,
     disposables: vscode.Disposable[]
 ): Promise<void> {
-    commandControllerInit(platform.createCommandsProvider?.(), platform.extensionClient.capabilities)
+    // commandControllerInit(platform.createCommandsProvider?.(), platform.extensionClient.capabilities)
 
     modelsService.setStorage(localStorage)
 
@@ -365,232 +267,26 @@ function registerParserListeners(disposables: vscode.Disposable[]) {
     disposables.push(vscode.workspace.onDidChangeTextDocument(updateParseTreeOnEdit))
 }
 
-async function registerOtherCommands(disposables: vscode.Disposable[]) {
-    disposables.push(
-        // Account links
-        vscode.commands.registerCommand(
-            'cody.show-rate-limit-modal',
-            async (userMessage: string, retryMessage: string, upgradeAvailable: boolean) => {
-                if (upgradeAvailable) {
-                    const option = await vscode.window.showInformationMessage(
-                        'Upgrade to Cody Pro',
-                        {
-                            modal: true,
-                            detail: `${userMessage}\n\nUpgrade to Cody Pro for unlimited autocomplete suggestions, and increased limits for chat messages and commands.\n\n${retryMessage}`,
-                        },
-                        'Upgrade',
-                        'See Plans'
-                    )
-                    // Both options go to the same URL
-                    if (option) {
-                        void vscode.env.openExternal(vscode.Uri.parse(ACCOUNT_UPGRADE_URL.toString()))
-                    }
-                } else {
-                    const option = await vscode.window.showInformationMessage(
-                        'Rate Limit Exceeded',
-                        {
-                            modal: true,
-                            detail: `${userMessage}\n\n${retryMessage}`,
-                        },
-                        'Learn More'
-                    )
-                    if (option) {
-                        void vscode.env.openExternal(
-                            vscode.Uri.parse(ACCOUNT_LIMITS_INFO_URL.toString())
-                        )
-                    }
-                }
-            }
-        ),
-        // Walkthrough / Support
-        vscode.commands.registerCommand('cody.feedback', () =>
-            vscode.env.openExternal(vscode.Uri.parse(CODY_FEEDBACK_URL.href))
-        )
-    )
-}
-
-async function registerCodyCommands({
-    statusBar,
-    chatClient,
-    fixupController,
-    disposables,
-    context,
-}: {
-    statusBar: CodyStatusBar
-    chatClient: ChatClient
-    fixupController: FixupController
-    disposables: vscode.Disposable[]
-    context: vscode.ExtensionContext
-}): Promise<void> {
-    // Execute Cody Commands and Cody Custom Commands
-    const executeCommand = (
-        commandKey: DefaultCodyCommands | string,
-        args?: Partial<CodyCommandArgs>
-    ): Promise<CommandResult | undefined> => {
-        return executeCommandUnsafe(PromptString.unsafe_fromUserQuery(commandKey), args).catch(error => {
-            if (error instanceof Error) {
-                console.log(error.stack)
-            }
-            logError('executeCommand', commandKey, args, error)
-            return undefined
-        })
-    }
-    const executeCommandUnsafe = async (
-        id: DefaultCodyCommands | PromptString,
-        args?: Partial<CodyCommandArgs>
-    ): Promise<CommandResult | undefined> => {
-        const clientConfig = await ClientConfigSingleton.getInstance().getConfig()
-        if (!clientConfig?.customCommandsEnabled) {
-            void vscode.window.showErrorMessage(
-                'This feature has been disabled by your Sourcegraph site admin.'
-            )
-            return undefined
-        }
-
-        // Process command with the commands controller
-        return await executeCodyCommand(id, newCodyCommandArgs(args))
-    }
-
-    // Register the execution command from above.
-    disposables.push(
-        vscode.commands.registerCommand('cody.action.command', (id, a) => executeCommand(id, a))
-    )
-
-    // Initialize supercompletion provider if experimental feature is enabled
-    disposables.push(
-        enableFeature(
-            ({ configuration }) => configuration.experimentalSupercompletions,
-            () => new SupercompletionProvider({ statusBar, chat: chatClient })
-        )
-    )
-
-    // Initialize autoedit provider if experimental feature is enabled
-    registerAutoEdits({ chatClient, fixupController, statusBar, disposables, context })
-
-    disposables.push(
-        subscriptionDisposable(
-            featureFlagProvider
-                .evaluatedFeatureFlag(FeatureFlag.CodyUnifiedPrompts)
-                .pipe(
-                    createDisposables(codyUnifiedPromptsFlag => {
-                        // Commands that are available only if unified prompts feature is enabled.
-                        const unifiedPromptsEnabled =
-                            codyUnifiedPromptsFlag && !clientCapabilities().isCodyWeb
-
-                        vscode.commands.executeCommand(
-                            'setContext',
-                            'cody.menu.custom-commands.enable',
-                            !unifiedPromptsEnabled
-                        )
-
-                        // NOTE: Soon to be deprecated and replaced by unified prompts.
-                        const chatCommands = [
-                            // Register prompt-like command if unified prompts feature is available.
-                            vscode.commands.registerCommand('cody.command.explain-code', a =>
-                                executeExplainCommand(a)
-                            ),
-                            vscode.commands.registerCommand('cody.command.smell-code', a =>
-                                executeSmellCommand(a)
-                            ),
-                        ]
-
-                        // NOTE: Soon to be deprecated and replaced by unified prompts.
-                        const editCommands = [
-                            vscode.commands.registerCommand('cody.command.document-code', a =>
-                                executeDocCommand(a)
-                            ),
-                        ]
-
-                        const unitTestCommand = [
-                            vscode.commands.registerCommand('cody.command.unit-tests', a =>
-                                unifiedPromptsEnabled
-                                    ? executeTestChatCommand(a)
-                                    : executeTestEditCommand(a)
-                            ),
-                        ]
-
-                        // Prompt-like commands.
-                        const unifiedPromptsCommands = [
-                            vscode.commands.registerCommand('cody.command.prompt-document-code', a =>
-                                executeDocChatCommand(a)
-                            ),
-                        ]
-
-                        // Register prompt-like command if unified prompts feature is available.
-                        return unifiedPromptsEnabled
-                            ? [
-                                  ...chatCommands,
-                                  ...editCommands,
-                                  ...unitTestCommand,
-                                  ...unifiedPromptsCommands,
-                              ]
-                            : [...chatCommands, ...editCommands, ...unitTestCommand]
-                    })
-                )
-                .subscribe({})
-        )
-    )
-}
-
-/**
- * Features that are currently available only in VS Code.
- */
-function registerVSCodeOnlyFeatures(chatClient: ChatClient, disposable: vscode.Disposable[]): void {
-    // Generating commit message command in the VS Code Source Control Panel.
-    disposable.push(new CodySourceControl(chatClient))
-    // Command for executing CLI commands in the Terminal panel used by Smart Apply.
-    disposable.push(new CodyTerminal())
-
-    disposable.push(
-        // Command that sends the selected output from the Terminal panel to Cody Chat for explanation.
-        vscode.commands.registerCommand('cody.command.explain-output', a => executeExplainOutput(a)),
-        // Internal Experimental: Command to generate additional test cases through Code Lenses in test files.
-        vscode.commands.registerCommand('cody.command.tests-cases', a => executeTestCaseEditCommand(a))
-    )
-}
-
-function enableFeature(
-    shouldEnable: (config: ResolvedConfiguration) => boolean,
-    enable: () => vscode.Disposable
-): vscode.Disposable {
-    let featureDisposable: vscode.Disposable | null
-    const sub = resolvedConfig
-        .pipe(
-            map(config => shouldEnable(config)),
-            distinctUntilChanged()
-        )
-        .subscribe(isEnabled => {
-            if (featureDisposable) {
-                featureDisposable.dispose()
-                featureDisposable = null
-            }
-            if (isEnabled) {
-                featureDisposable = enable()
-            }
-        })
-    return { dispose: () => sub.unsubscribe() }
-}
-
 function registerChatCommands(disposables: vscode.Disposable[]): void {
     disposables.push(
         // Chat
-        vscode.commands.registerCommand('cody.settings.extension', () =>
+        vscode.commands.registerCommand('driver-ai.settings.extension', () =>
             vscode.commands.executeCommand('workbench.action.openSettings', {
-                query: '@ext:sourcegraph.cody-ai',
+                query: '@ext:driver-ai.driver-chat',
             })
         ),
-        vscode.commands.registerCommand('cody.chat.view.popOut', async () => {
+        vscode.commands.registerCommand('driver-ai.chat.view.popOut', async () => {
             vscode.commands.executeCommand('workbench.action.moveEditorToNewWindow')
         }),
-        vscode.commands.registerCommand('cody.chat.history.panel', async () => {
+        vscode.commands.registerCommand('driver-ai.chat.history.panel', async () => {
             await displayHistoryQuickPick(currentAuthStatus())
         }),
-        vscode.commands.registerCommand('cody.settings.extension.chat', () =>
+        vscode.commands.registerCommand('driver-ai.settings.extension.chat', () =>
             vscode.commands.executeCommand('workbench.action.openSettings', {
-                query: '@ext:sourcegraph.cody-ai chat',
+                query: '@ext:driver-ai.driver-chat chat',
             })
         ),
-        vscode.commands.registerCommand('cody.copy.version', () =>
+        vscode.commands.registerCommand('driver-ai.copy.version', () =>
             vscode.env.clipboard.writeText(version)
         )
     )
@@ -598,20 +294,16 @@ function registerChatCommands(disposables: vscode.Disposable[]): void {
 
 function registerAuthCommands(disposables: vscode.Disposable[]): void {
     disposables.push(
-        vscode.commands.registerCommand('cody.auth.signin', () => showSignInMenu()),
-        vscode.commands.registerCommand('cody.auth.signout', () => showSignOutMenu()),
-        vscode.commands.registerCommand('cody.auth.account', () => showAccountMenu()),
-        vscode.commands.registerCommand('cody.auth.support', () => showFeedbackSupportQuickPick()),
-        vscode.commands.registerCommand(
-            'cody.auth.requestEndpointSettings',
-            async () => await requestEndpointSettingsDeliveryToSearchPlugin()
-        )
+        vscode.commands.registerCommand('driver-ai.auth.signin', () => showSignInMenu()),
+        vscode.commands.registerCommand('driver-ai.auth.signout', () => showSignOutMenu())
+        // vscode.commands.registerCommand('driver-ai.auth.account', () => showAccountMenu()),
+        // vscode.commands.registerCommand('driver-ai.auth.support', () => showFeedbackSupportQuickPick()),
     )
 }
 
 function registerUpgradeHandlers(disposables: vscode.Disposable[]): void {
     disposables.push(
-        // Register URI Handler (e.g. vscode://sourcegraph.cody-ai)
+        // Register URI Handler (e.g. vscode://driver-ai.driver-chat)
         vscode.window.registerUriHandler({
             handleUri: async (uri: vscode.Uri) => {
                 if (uri.path === '/app-done') {
@@ -620,64 +312,7 @@ function registerUpgradeHandlers(disposables: vscode.Disposable[]): void {
                     void tokenCallbackHandler(uri)
                 }
             },
-        }),
-
-        // Check if user has just moved back from a browser window to upgrade cody pro
-        vscode.window.onDidChangeWindowState(async ws => {
-            const authStatus = currentAuthStatus()
-            const sub = await currentUserProductSubscription()
-            if (ws.focused && isDotCom(authStatus) && authStatus.authenticated) {
-                const res = await graphqlClient.getCurrentUserCodyProEnabled()
-                if (res instanceof Error) {
-                    logError('onDidChangeWindowState', 'getCurrentUserCodyProEnabled', res)
-                    return
-                }
-                // Re-auth if user's cody pro status has changed
-                const isCurrentCodyProUser = sub && !sub.userCanUpgrade
-                if (res && res.codyProEnabled !== isCurrentCodyProUser) {
-                    authProvider.refresh()
-                }
-            }
-        }),
-        new CodyProExpirationNotifications(
-            graphqlClient,
-            vscode.window.showInformationMessage,
-            vscode.env.openExternal
-        )
-    )
-}
-
-/**
- * Register commands used in internal tests
- */
-async function registerTestCommands(
-    context: vscode.ExtensionContext,
-    disposables: vscode.Disposable[]
-): Promise<void> {
-    await vscode.commands.executeCommand('setContext', 'cody.devOrTest', true)
-    disposables.push(
-        vscode.commands.registerCommand('cody.test.set-context-filters', async () => {
-            // Prompt the user for the policy
-            const raw = await vscode.window.showInputBox({ title: 'Context Filters Overwrite' })
-            if (!raw) {
-                return
-            }
-            try {
-                const policy = JSON.parse(raw)
-                contextFiltersProvider.setTestingContextFilters(policy)
-            } catch (error) {
-                vscode.window.showErrorMessage(
-                    'Failed to parse context filters policy. Please check your JSON syntax.'
-                )
-            }
-        }),
-        // Access token - this is only used in configuration tests
-        vscode.commands.registerCommand('cody.test.token', async (serverEndpoint, token) =>
-            authProvider.validateAndStoreCredentials(
-                { credentials: { token }, serverEndpoint },
-                'always-store'
-            )
-        )
+        })
     )
 }
 
@@ -689,187 +324,43 @@ async function registerDebugCommands(
     disposables: vscode.Disposable[]
 ): Promise<void> {
     disposables.push(
-        vscode.commands.registerCommand('cody.debug.export.logs', () => exportOutputLog(context.logUri)),
-        vscode.commands.registerCommand('cody.debug.outputChannel', () => openCodyOutputChannel()),
-        vscode.commands.registerCommand('cody.debug.enable.all', () => enableVerboseDebugMode()),
-        vscode.commands.registerCommand('cody.debug.reportIssue', () => openCodyIssueReporter()),
-        vscode.commands.registerCommand('cody.debug.heapDump', () => dumpCodyHeapSnapshot())
-    )
-}
-
-function registerAutoEdits({
-    chatClient,
-    fixupController,
-    statusBar,
-    disposables,
-    context,
-}: {
-    chatClient: ChatClient
-    fixupController: FixupController
-    statusBar: CodyStatusBar
-    disposables: vscode.Disposable[]
-    context: vscode.ExtensionContext
-}): void {
-    const { autoedit } = clientCapabilities()
-    const autoeditDisabledForClient =
-        isRunningInsideAgent() && (autoedit === undefined || autoedit === 'none')
-    if (autoeditDisabledForClient) {
-        // Do not attempt to register autoedits for clients that have not opted in to use autoedit.
-        return
-    }
-
-    disposables.push(
-        autoeditDebugStore,
-        subscriptionDisposable(
-            combineLatest(
-                resolvedConfig,
-                authStatus,
-                featureFlagProvider.evaluatedFeatureFlag(
-                    FeatureFlag.CodyAutoEditExperimentEnabledFeatureFlag
-                ),
-                featureFlagProvider.evaluatedFeatureFlag(FeatureFlag.CodyAutoEditHotStreak),
-                featureFlagProvider.evaluatedFeatureFlag(
-                    FeatureFlag.CodyAutoEditUseWebSocketForFireworksConnections
-                )
-            )
-                .pipe(
-                    distinctUntilChanged((a, b) => {
-                        return (
-                            isEqual(a[0].configuration, b[0].configuration) &&
-                            isEqual(a[1], b[1]) &&
-                            isEqual(a[2], b[2])
-                        )
-                    }),
-                    switchMap(
-                        ([
-                            config,
-                            authStatus,
-                            autoeditFeatureFlagEnabled,
-                            autoeditHotStreakEnabled,
-                            autoeditUseWebSocketEnabled,
-                        ]) => {
-                            return createAutoEditsProvider({
-                                config,
-                                authStatus,
-                                chatClient,
-                                autoeditFeatureFlagEnabled,
-                                autoeditHotStreakEnabled,
-                                autoeditUseWebSocketEnabled,
-                                fixupController,
-                                statusBar,
-                                context,
-                            })
-                        }
-                    ),
-                    catchError(error => {
-                        autoeditsOutputChannelLogger.logError('registerAutoedits', 'Error', error)
-                        return NEVER
-                    })
-                )
-                .subscribe({})
-        )
-    )
-}
-
-/**
- * Registers autocomplete functionality.
- */
-function registerAutocomplete(
-    platform: PlatformContext,
-    statusBar: CodyStatusBar,
-    disposables: vscode.Disposable[]
-): void {
-    //@ts-ignore
-    let statusBarLoader: undefined | (() => void) = statusBar.addLoader({
-        title: 'Completion Provider is starting',
-        kind: 'startup',
-    })
-    const finishLoading = () => {
-        statusBarLoader?.()
-        statusBarLoader = undefined
-    }
-
-    disposables.push(
-        subscriptionDisposable(
-            combineLatest(resolvedConfig, authStatus)
-                .pipe(
-                    //TODO(@rnauta -> @sqs): It feels yuk to handle the invalidation outside of
-                    //where the state is picked. It's also very tedious
-                    distinctUntilChanged((a, b) => {
-                        return isEqual(a[0].configuration, b[0].configuration) && isEqual(a[1], b[1])
-                    }),
-                    switchMap(([config, authStatus]) => {
-                        if (!authStatus.pendingValidation && !statusBarLoader) {
-                            statusBarLoader = statusBar.addLoader({
-                                title: 'Completion Provider is starting',
-                            })
-                        }
-                        const res = createInlineCompletionItemProvider({
-                            config,
-                            authStatus,
-                            platform,
-                            statusBar,
-                        })
-                        if (res === NEVER && !authStatus.pendingValidation) {
-                            finishLoading()
-                        }
-                        return res.tap(res => {
-                            finishLoading()
-                        })
-                    }),
-                    catchError(error => {
-                        finishLoading()
-                        //TODO: We could show something in the statusbar
-                        logError('registerAutocomplete', 'Error', error)
-                        return NEVER
-                    })
-                )
-                .subscribe({})
-        )
+        vscode.commands.registerCommand('driver-ai.debug.export.logs', () =>
+            exportOutputLog(context.logUri)
+        ),
+        vscode.commands.registerCommand('driver-ai.debug.reportIssue', () => openDriverIssueReporter()),
+        vscode.commands.registerCommand('driver-ai.debug.heapDump', () => dumpDriverHeapSnapshot())
     )
 }
 
 interface RegisterChatOptions {
     context: vscode.ExtensionContext
-    platform: PlatformContext
-    chatClient: ChatClient
-    guardrails: SourcegraphGuardrailsClient
     editor: VSCodeEditor
     contextRetriever: ContextRetriever
 }
 
 function registerChat(
-    { context, platform, chatClient, guardrails, editor, contextRetriever }: RegisterChatOptions,
+    { context, editor, contextRetriever }: RegisterChatOptions,
     disposables: vscode.Disposable[]
 ): {
     chatsController: ChatsController
 } {
-    // Shared configuration that is required for chat views to send and receive messages
-    const messageProviderOptions: MessageProviderOptions = {
-        chat: chatClient,
-        guardrails,
-        editor,
-    }
+    const extensionClient = defaultVSCodeExtensionClient()
+
     const chatsController = new ChatsController(
         {
-            ...messageProviderOptions,
             extensionUri: context.extensionUri,
-            startTokenReceiver: platform.startTokenReceiver,
+            editor,
         },
-        chatClient,
         contextRetriever,
-        guardrails,
-        platform.extensionClient
+        extensionClient
     )
     chatsController.registerViewsAndCommands()
-    const promptsManager = new PromptsManager({ chatsController })
-    const sourcegraphRemoteFileProvider = new SourcegraphRemoteFileProvider()
 
-    disposables.push(new CodeActionProvider(), promptsManager, sourcegraphRemoteFileProvider)
+    disposables.push(new CodeActionProvider())
 
     // Register a serializer for reviving the chat panel on reload
     if (vscode.window.registerWebviewPanelSerializer) {
-        vscode.window.registerWebviewPanelSerializer(CodyChatEditorViewType, {
+        vscode.window.registerWebviewPanelSerializer(ChatSidebarViewType, {
             async deserializeWebviewPanel(webviewPanel: vscode.WebviewPanel, chatID: string) {
                 if (chatID && webviewPanel.title) {
                     logDebug('main:deserializeWebviewPanel', 'reviving last unclosed chat panel')

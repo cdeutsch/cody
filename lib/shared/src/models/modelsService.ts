@@ -1,10 +1,8 @@
+// cspell:ignore endoftext modelconfig
 import { type Observable, map } from 'observable-fns'
 
-import { authStatus, currentAuthStatus } from '../auth/authStatus'
-import { mockAuthStatus } from '../auth/authStatus'
-import { type AuthStatus, isCodyProUser, isEnterpriseUser } from '../auth/types'
-import { AUTH_STATUS_FIXTURE_AUTHED_DOTCOM } from '../auth/types'
-import { type PickResolvedConfiguration, resolvedConfig } from '../configuration/resolver'
+import { authStatus } from '../auth/authStatus'
+import type { AuthStatus } from '../auth/types'
 import { FeatureFlag, featureFlagProvider } from '../experimentation/FeatureFlagProvider'
 import { logDebug } from '../logger'
 import {
@@ -17,14 +15,8 @@ import {
     tap,
 } from '../misc/observable'
 import { firstResultFromOperation, pendingOperation } from '../misc/observableOperation'
-import { ClientConfigSingleton } from '../sourcegraph-api/clientConfig'
-import {
-    type UserProductSubscription,
-    userProductSubscription,
-} from '../sourcegraph-api/userProductSubscription'
 import { CHAT_INPUT_TOKEN_BUDGET, CHAT_OUTPUT_TOKEN_BUDGET } from '../token/constants'
-import { configOverwrites } from './configOverwrites'
-import { type Model, type ServerModel, modelTier } from './model'
+import type { Model, ServerModel } from './model'
 import { syncModels } from './sync'
 import { ModelTag } from './tags'
 import { type ChatModel, type EditModel, type ModelContextWindow, ModelUsage } from './types'
@@ -121,14 +113,14 @@ interface OpenAICompatible {
     // (optional) Custom instruction to be included at the start of all chat messages
     // when using this model, e.g. "Answer all questions in Spanish."
     //
-    // Note: similar to Cody client config option `cody.chat.preInstruction`; if user has
+    // Note: similar to Driver client config option `driver-ai.chat.preInstruction`; if user has
     // configured that it will be used instead of this.
     chatPreInstruction?: string
 
     // (optional) Custom instruction to be included at the end of all edit commands
     // when using this model, e.g. "Write all unit tests with Jest instead of detected framework."
     //
-    // Note: similar to Cody client config option `cody.edit.preInstruction`; if user has
+    // Note: similar to Driver client config option `driver-ai.edit.preInstruction`; if user has
     // configured that it will be respected instead of this.
     editPostInstruction?: string
 
@@ -137,7 +129,7 @@ interface OpenAICompatible {
     //
     // This applies on single-line completions, e.g. `var i = <completion>`
     //
-    // Note: similar to hidden Cody client config option `cody.autocomplete.advanced.timeout.singleline`
+    // Note: similar to hidden Driver client config option `driver-ai.autocomplete.advanced.timeout.singleline`
     // If user has configured that, it will be respected instead of this.
     autocompleteSinglelineTimeout?: number
 
@@ -147,7 +139,7 @@ interface OpenAICompatible {
     // This applies on multi-line completions, which are based on intent-detection when e.g. a code block
     // is being completed, e.g. `func parseURL(url string) {<completion>`
     //
-    // Note: similar to hidden Cody client config option `cody.autocomplete.advanced.timeout.multiline`
+    // Note: similar to hidden Driver client config option `driver-ai.autocomplete.advanced.timeout.multiline`
     // If user has configured that, it will be respected instead of this.
     autocompleteMultilineTimeout?: number
 
@@ -240,8 +232,8 @@ const EMPTY_MODELS_DATA: ModelsData = {
 
 export interface LocalStorageForModelPreferences {
     getEnrollmentHistory(featureName: string): boolean
-    getModelPreferences(): DefaultsAndUserPreferencesByEndpoint
-    setModelPreferences(preferences: DefaultsAndUserPreferencesByEndpoint): Promise<void>
+    getModelPreferences(): DefaultsAndUserPreferencesForEndpoint
+    setModelPreferences(preferences: DefaultsAndUserPreferencesForEndpoint): Promise<void>
 }
 
 export interface ModelAvailabilityStatus {
@@ -256,7 +248,7 @@ export interface ModelAvailabilityStatus {
  *
  * TODO(PRIME-228): Update this type to be able to fetch the models from the
  *      Sourcegraph backend instead of being hard-coded.
- * TODO(PRIME-283): Enable Cody Enterprise users to select which LLM model to
+ * TODO(PRIME-283): Enable Driver Enterprise users to select which LLM model to
  *      used in the UI. (By having the relevant code paths just pull the models
  *      from this type.)
  */
@@ -280,8 +272,8 @@ export class ModelsService {
 
         this.syncPreferencesSubscription = combineLatest(
             this.modelsChanges,
-            featureFlagProvider.evaluatedFeatureFlag(FeatureFlag.CodyEditDefaultToGpt4oMini),
-            featureFlagProvider.evaluatedFeatureFlag(FeatureFlag.CodyDeepSeekChat)
+            featureFlagProvider.evaluatedFeatureFlag(FeatureFlag.DriverEditDefaultToGpt4oMini),
+            featureFlagProvider.evaluatedFeatureFlag(FeatureFlag.DriverDeepSeekChat)
         )
             .pipe(
                 tap(([data, shouldEditDefaultToGpt4oMini, shouldChatDefaultToDeepSeek]) => {
@@ -292,7 +284,7 @@ export class ModelsService {
                     // Ensures we only change user preferences once
                     // when they join the A/B test.
                     const isEnrolled = this.storage?.getEnrollmentHistory(
-                        FeatureFlag.CodyEditDefaultToGpt4oMini
+                        FeatureFlag.DriverEditDefaultToGpt4oMini
                     )
 
                     // Check if this user has already been enrolled in the deepseek chat feature flag experiment.
@@ -303,7 +295,7 @@ export class ModelsService {
                     // 3. Their chosen preference persists across sessions and new chats
                     // 4. We don't override their preference every time they load the app
                     const isEnrolledDeepSeekChat = this.storage?.getEnrollmentHistory(
-                        FeatureFlag.CodyDeepSeekChat
+                        FeatureFlag.DriverDeepSeekChat
                     )
 
                     // Ensures that we have the gpt-4o-mini model
@@ -319,7 +311,6 @@ export class ModelsService {
                         model => model?.id === 'fireworks::v1::deepseek-v3'
                     )
 
-                    const allSitePrefs = this.storage?.getModelPreferences()
                     const currentAccountPrefs = { ...data.preferences }
 
                     if (!isEnrolled && shouldEditDefaultToGpt4oMini && gpt4oMini) {
@@ -336,10 +327,7 @@ export class ModelsService {
                         currentAccountPrefs.selected.chat = deepseekModel.id
                     }
 
-                    const updated: DefaultsAndUserPreferencesByEndpoint = {
-                        ...allSitePrefs,
-                        [currentAuthStatus().endpoint]: currentAccountPrefs,
-                    }
+                    const updated: DefaultsAndUserPreferencesForEndpoint = currentAccountPrefs
                     this.storage?.setModelPreferences(updated)
                 })
             )
@@ -355,24 +343,7 @@ export class ModelsService {
      * An observable that emits all available models upon subscription and whenever there are
      * changes.
      */
-    public modelsChanges: Observable<ModelsData | typeof pendingOperation> = syncModels({
-        resolvedConfig: resolvedConfig.pipe(
-            map(
-                (
-                    config
-                ): PickResolvedConfiguration<{
-                    configuration: true
-                    auth: true
-                    clientState: 'modelPreferences'
-                }> => config
-            ),
-            distinctUntilChanged()
-        ),
-        authStatus,
-        configOverwrites,
-        clientConfig: ClientConfigSingleton.getInstance().changes,
-        userProductSubscription,
-    })
+    public modelsChanges: Observable<ModelsData | typeof pendingOperation> = syncModels()
 
     /**
      * The list of models.
@@ -433,18 +404,9 @@ export class ModelsService {
     }
 
     public getDefaultModel(type: ModelUsage): Observable<Model | undefined | typeof pendingOperation> {
-        return combineLatest(
-            this.getModelsByType(type),
-            this.modelsChanges,
-            authStatus,
-            userProductSubscription
-        ).pipe(
-            map(([models, modelsData, authStatus, userProductSubscription]) => {
-                if (
-                    models === pendingOperation ||
-                    modelsData === pendingOperation ||
-                    userProductSubscription === pendingOperation
-                ) {
+        return combineLatest(this.getModelsByType(type), this.modelsChanges, authStatus).pipe(
+            map(([models, modelsData, authStatus]) => {
+                if (models === pendingOperation || modelsData === pendingOperation) {
                     return pendingOperation
                 }
 
@@ -454,8 +416,8 @@ export class ModelsService {
                 // Find the first model the user can use that isn't a reasoning model
                 const firstModelUserCanUse = models.find(
                     m =>
-                        this._isModelAvailable(modelsData, authStatus, userProductSubscription, m) ===
-                            true && !m.tags.includes(ModelTag.Reasoning)
+                        this._isModelAvailable(modelsData, authStatus, m) === true &&
+                        !m.tags.includes(ModelTag.Reasoning)
                 )
 
                 if (modelsData.preferences) {
@@ -473,12 +435,7 @@ export class ModelsService {
                             (selected.tags.includes(ModelTag.Reasoning) ||
                                 selected.tags.includes(ModelTag.Deprecated))
                         ) &&
-                        this._isModelAvailable(
-                            modelsData,
-                            authStatus,
-                            userProductSubscription,
-                            selected
-                        ) === true
+                        this._isModelAvailable(modelsData, authStatus, selected) === true
                     ) {
                         return selected
                     }
@@ -537,21 +494,17 @@ export class ModelsService {
         if (!this.storage) {
             throw new Error('ModelsService.storage is not set')
         }
-        const serverEndpoint = currentAuthStatus().endpoint
-        const currentPrefs = deepClone(this.storage.getModelPreferences())
-        if (!currentPrefs[serverEndpoint]) {
-            currentPrefs[serverEndpoint] = modelsData.preferences
-        }
-        currentPrefs[serverEndpoint].selected[type] = resolved.id
+        const currentPrefs = modelsData.preferences
+        currentPrefs.selected[type] = resolved.id
         await this.storage.setModelPreferences(currentPrefs)
     }
 
     public isModelAvailable(model: string | Model): Observable<boolean | typeof pendingOperation> {
-        return combineLatest(authStatus, this.modelsChanges, userProductSubscription).pipe(
-            map(([authStatus, modelsData, userProductSubscription]) =>
-                modelsData === pendingOperation || userProductSubscription === pendingOperation
+        return combineLatest(authStatus, this.modelsChanges).pipe(
+            map(([authStatus, modelsData]) =>
+                modelsData === pendingOperation
                     ? pendingOperation
-                    : this._isModelAvailable(modelsData, authStatus, userProductSubscription, model)
+                    : this._isModelAvailable(modelsData, authStatus, model)
             ),
             distinctUntilChanged()
         )
@@ -560,31 +513,32 @@ export class ModelsService {
     private _isModelAvailable(
         modelsData: ModelsData,
         authStatus: AuthStatus,
-        sub: UserProductSubscription | null,
         model: string | Model
     ): boolean {
-        const resolved = this.resolveModel(modelsData, model)
-        if (!resolved) {
-            return false
-        }
-        const tier = modelTier(resolved)
-        // Cody Enterprise users are able to use any models that the backend says is supported.
-        if (isEnterpriseUser(authStatus)) {
-            return true
-        }
+        return true
 
-        // A Cody Pro user can use any Free or Pro model, but not Enterprise.
-        // (But in reality, Sourcegraph.com wouldn't serve any Enterprise-only models to
-        // Cody Pro users anyways.)
-        if (isCodyProUser(authStatus, sub)) {
-            return (
-                tier !== 'enterprise' &&
-                !resolved.tags.includes(ModelTag.Waitlist) &&
-                !resolved.tags.includes(ModelTag.OnWaitlist)
-            )
-        }
+        // const resolved = this.resolveModel(modelsData, model);
+        // if (!resolved) {
+        //   return false;
+        // }
+        // const tier = modelTier(resolved);
+        // // Driver Enterprise users are able to use any models that the backend says is supported.
+        // if (isEnterpriseUser(authStatus)) {
+        //   return true;
+        // }
 
-        return tier === 'free'
+        // // A Driver Pro user can use any Free or Pro model, but not Enterprise.
+        // // (But in reality, Sourcegraph.com wouldn't serve any Enterprise-only models to
+        // // Driver Pro users anyways.)
+        // if (isDriverProUser(authStatus, sub)) {
+        //   return (
+        //     tier !== 'enterprise' &&
+        //     !resolved.tags.includes(ModelTag.Waitlist) &&
+        //     !resolved.tags.includes(ModelTag.OnWaitlist)
+        //   );
+        // }
+
+        // return tier === 'free';
     }
 
     // does an approximate match on the model id, seeing if there are any models in the
@@ -664,47 +618,3 @@ export class ModelsService {
 }
 
 export const modelsService = new ModelsService()
-
-interface MockModelsServiceResult {
-    storage: TestLocalStorageForModelPreferences
-    modelsService: ModelsService
-}
-
-export class TestLocalStorageForModelPreferences implements LocalStorageForModelPreferences {
-    private isEnrolled = false
-    constructor(public data: DefaultsAndUserPreferencesByEndpoint | null = null) {}
-
-    getModelPreferences(): DefaultsAndUserPreferencesByEndpoint {
-        return this.data || {}
-    }
-
-    async setModelPreferences(preferences: DefaultsAndUserPreferencesByEndpoint): Promise<void> {
-        this.data = preferences
-    }
-
-    getEnrollmentHistory(_featureName: string): boolean {
-        if (!this.isEnrolled) {
-            this.isEnrolled = true
-            return false
-        }
-        return true
-    }
-}
-
-export function mockModelsService({
-    storage = new TestLocalStorageForModelPreferences(),
-    modelsService = new ModelsService(),
-    authStatus = AUTH_STATUS_FIXTURE_AUTHED_DOTCOM,
-}: {
-    authStatus?: AuthStatus
-    modelsService?: ModelsService
-    storage?: TestLocalStorageForModelPreferences
-}): MockModelsServiceResult {
-    modelsService.setStorage(storage)
-    mockAuthStatus(authStatus)
-    return { storage, modelsService }
-}
-
-function deepClone<T>(value: T): T {
-    return JSON.parse(JSON.stringify(value)) as T
-}

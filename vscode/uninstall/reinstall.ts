@@ -1,8 +1,8 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { codyPaths } from '@sourcegraph/cody-shared'
+import { driverPaths } from '@sourcegraph/cody-shared'
 
-const uninstallMarker = path.join(codyPaths().config, 'uninstall-marker')
+const uninstallMarker = path.join(driverPaths().config, 'uninstall-marker')
 
 export const createUninstallMarker = async (): Promise<void> => {
     await fs.writeFile(uninstallMarker, '')

@@ -12,7 +12,7 @@ suite('Multi-root Workspace', () => {
             path.basename(wf.uri.fsPath)
         )
         assert.deepStrictEqual(workspaceFolderNames, ['workspace', 'workspace2'])
-        const api = vscode.extensions.getExtension<ExtensionApi>('sourcegraph.cody-ai')
+        const api = vscode.extensions.getExtension<ExtensionApi>('driver-ai.driver-chat')
         assert.ok(api, 'extension not found')
     })
 })

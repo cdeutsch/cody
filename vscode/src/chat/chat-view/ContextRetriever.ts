@@ -5,6 +5,7 @@ import {
     type ContextItemFile,
     type ContextItemMedia,
     type ContextItemOpenCtx,
+    type ContextItemPdf,
     type ContextItemRepository,
     ContextItemSource,
     type ContextItemSymbol,
@@ -12,15 +13,14 @@ import {
     type ContextSearchResult,
     type FileURI,
     type PromptString,
-    type SourcegraphCompletionsClient,
+    contextSearch,
     firstResultFromOperation,
-    graphqlClient,
+    getRepoIds,
     isFileURI,
 } from '@sourcegraph/cody-shared'
 import isError from 'lodash/isError'
 import * as vscode from 'vscode'
 import type { VSCodeEditor } from '../../editor/vscode-editor'
-import { extractKeywords, rewriteKeywordQuery } from '../../local-context/rewrite-keyword-query'
 import type { SymfRunner } from '../../local-context/symf'
 import { logDebug, logError } from '../../output-channel-logger'
 import { gitLocallyModifiedFiles } from '../../repository/git-extension-api'
@@ -31,6 +31,7 @@ interface StructuredMentions {
     repos: ContextItemRepository[]
     trees: ContextItemTree[]
     files: ContextItemFile[]
+    pdfs: ContextItemPdf[]
     symbols: ContextItemSymbol[]
     openCtx: ContextItemOpenCtx[]
     mediaFiles: ContextItemMedia[]
@@ -40,6 +41,7 @@ export function toStructuredMentions(mentions: ContextItem[]): StructuredMention
     const repos: ContextItemRepository[] = []
     const trees: ContextItemTree[] = []
     const files: ContextItemFile[] = []
+    const pdfs: ContextItemPdf[] = []
     const symbols: ContextItemSymbol[] = []
     const openCtx: ContextItemOpenCtx[] = []
     const mediaFiles: ContextItemMedia[] = []
@@ -55,6 +57,9 @@ export function toStructuredMentions(mentions: ContextItem[]): StructuredMention
                 break
             case 'file':
                 files.push(mention)
+                break
+            case 'pdf':
+                pdfs.push(mention)
                 break
             case 'symbol':
                 symbols.push(mention)
@@ -73,7 +78,7 @@ export function toStructuredMentions(mentions: ContextItem[]): StructuredMention
                 break
         }
     }
-    return { repos, trees, files, symbols, openCtx, mediaFiles }
+    return { repos, trees, files, pdfs, symbols, openCtx, mediaFiles }
 }
 
 /**
@@ -134,9 +139,9 @@ async function codebaseRootsFromMentions(
     let localRepoIDs =
         localRepoNames.length === 0
             ? []
-            : await graphqlClient.getRepoIds(localRepoNames, localRepoNames.length, signal)
+            : await getRepoIds(localRepoNames, localRepoNames.length, signal)
     if (isError(localRepoIDs)) {
-        logError('codebaseRootFromMentions', 'Failed to get repo IDs from Sourcegraph', localRepoIDs)
+        logError('codebaseRootFromMentions', 'Failed to get repo IDs from Driver', localRepoIDs)
         localRepoIDs = []
     }
     const uriToId: { [uri: string]: string } = {}
@@ -171,8 +176,8 @@ async function codebaseRootsFromMentions(
 export class ContextRetriever implements vscode.Disposable {
     constructor(
         private editor: VSCodeEditor,
-        private symf: SymfRunner | undefined,
-        private llms: SourcegraphCompletionsClient
+        private symf: SymfRunner | undefined
+        // private llms: SourcegraphCompletionsClient
     ) {}
 
     public dispose(): void {
@@ -200,19 +205,16 @@ export class ContextRetriever implements vscode.Disposable {
      * Computes a "Did you mean?" suggestion for a given query by extracting keywords.
      * Only attempts to extract keywords for queries that look like search queries.
      */
-    public async computeDidYouMean(
-        query: PromptString,
-        signal: AbortSignal
-    ): Promise<string | undefined> {
-        if (!looksLikeSearch(query.toString())) {
-            return undefined
-        }
-        const keywords = await extractKeywords(this.llms, query, signal)
-        if (keywords.length > 0) {
-            return keywords.join(' ')
-        }
-        return undefined
-    }
+    // public async computeDidYouMean(query: PromptString, signal: AbortSignal): Promise<string | undefined> {
+    //   if (!looksLikeSearch(query.toString())) {
+    //     return undefined;
+    //   }
+    //   const keywords = await extractKeywords(this.llms, query, signal);
+    //   if (keywords.length > 0) {
+    //     return keywords.join(' ');
+    //   }
+    //   return undefined;
+    // }
 
     private async _retrieveContext(
         roots: Root[],
@@ -224,9 +226,8 @@ export class ContextRetriever implements vscode.Disposable {
         if (roots.length === 0) {
             return []
         }
-        const rewritten = skipQueryRewrite
-            ? query.toString()
-            : await rewriteKeywordQuery(this.llms, query, signal)
+        // const rewritten = skipQueryRewrite ? query.toString() : await rewriteKeywordQuery(this.llms, query, signal);
+        const rewritten = query.toString()
         const rewrittenQuery = {
             ...query,
             rewritten,
@@ -323,7 +324,7 @@ export class ContextRetriever implements vscode.Disposable {
     ): Promise<ContextItem[]> {
         const preferServerContext = vscode.workspace
             .getConfiguration()
-            .get<boolean>('cody.internal.serverSideContext', false)
+            .get<boolean>('driver.internal.serverSideContext', false)
         const repoIDsOnRemote = new Set<string>()
         const localRootURIs = new Map<string, FileURI>()
 
@@ -393,7 +394,7 @@ export class ContextRetriever implements vscode.Disposable {
             return []
         }
 
-        const remoteResult = await graphqlClient.contextSearch({ repoIDs, query, signal })
+        const remoteResult = await contextSearch({ repoIDs, query, signal })
 
         if (isError(remoteResult)) {
             throw remoteResult
@@ -418,7 +419,7 @@ export class ContextRetriever implements vscode.Disposable {
         return symf && localRootURIs.length > 0
             ? Promise.all(
                   localRootURIs.map(rootURI =>
-                      // TODO(beyang): retire searchSymf and retrieveContextGracefully
+                      // TODO: retire searchSymf and retrieveContextGracefully
                       // (see invocation of symf in retrieveLiveContext)
                       retrieveContextGracefully(
                           searchSymf(symf, this.editor, rootURI, originalQuery),
@@ -505,18 +506,18 @@ export function filterLocallyModifiedFilesOutOfRemoteContext(
     return { keep, remove }
 }
 
-const searchPatterns = [
-    /^where is/i,
-    /^look for/i,
-    /^search for/i,
-    /^find all/i,
-    /^list all/i,
-    /^get all/i,
-    /^show all/i,
-    /occurrences of/i,
-    /^where do we/i,
-    /examples of/i,
-]
-function looksLikeSearch(query: string): boolean {
-    return searchPatterns.some(pattern => pattern.test(query.trim()))
-}
+// const searchPatterns = [
+//   /^where is/i,
+//   /^look for/i,
+//   /^search for/i,
+//   /^find all/i,
+//   /^list all/i,
+//   /^get all/i,
+//   /^show all/i,
+//   /occurrences of/i,
+//   /^where do we/i,
+//   /examples of/i,
+// ];
+// function looksLikeSearch(query: string): boolean {
+//   return searchPatterns.some((pattern) => pattern.test(query.trim()));
+// }

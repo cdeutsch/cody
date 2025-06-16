@@ -1,6 +1,6 @@
 import * as vscode from 'vscode'
 
-import type { CodyCommandArgs } from '../commands/types'
+import type { DriverCommandArgs } from '../commands/types'
 import { execQueryWrapper } from '../tree-sitter/query-sdk'
 
 export class DocumentCodeAction implements vscode.CodeActionProvider {
@@ -46,7 +46,7 @@ export class DocumentCodeAction implements vscode.CodeActionProvider {
         const source = 'code-action:document'
         action.command = {
             command: 'cody.command.document-code',
-            arguments: [{ source } satisfies Partial<CodyCommandArgs>],
+            arguments: [{ source } satisfies Partial<DriverCommandArgs>],
             title: displayText,
         }
         return action

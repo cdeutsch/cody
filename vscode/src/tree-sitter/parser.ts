@@ -4,7 +4,6 @@ import * as vscode from 'vscode'
 
 import { wrapInActiveSpan } from '@sourcegraph/cody-shared'
 import Parser, { type Tree } from 'web-tree-sitter'
-import { captureException } from '../services/sentry/sentry'
 import { DOCUMENT_LANGUAGE_TO_GRAMMAR, type SupportedLanguage, isSupportedLanguage } from './grammars'
 import { initQueries } from './query-sdk'
 
@@ -99,7 +98,7 @@ export async function createParser(settings: ParserSettings): Promise<WrappedPar
         try {
             return parser.parse(...args)
         } catch (error) {
-            captureException(error)
+            // captureException(error);
 
             if (process.env.NODE_ENV === 'development') {
                 console.error('parser.parse() error:', error)

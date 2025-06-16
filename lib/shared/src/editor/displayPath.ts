@@ -1,3 +1,4 @@
+// cspell:ignore myproject
 import { URI } from 'vscode-uri'
 
 import { pathFunctionsForURI, posixFilePaths, windowsFilePaths } from '../common/path'
@@ -167,7 +168,7 @@ export function uriHasPrefix(uri: URI, prefix: URI, isWindows: boolean): boolean
             : prefix.path
     return (
         uri.scheme === prefix.scheme &&
-        (uri.authority ?? '') === (prefix.authority ?? '') && // different URI impls treat empty different
+        (uri.authority ?? '') === (prefix.authority ?? '') && // different URI implementations treat empty different
         (uriPath === prefixPath ||
             uriPath.startsWith(prefixPath.endsWith('/') ? prefixPath : `${prefixPath}/`) ||
             (prefixPath.endsWith('/') && uriPath === prefixPath.slice(0, -1)))

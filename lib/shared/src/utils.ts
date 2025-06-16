@@ -1,3 +1,4 @@
+// cspell:ignore otheruser
 import { logError } from './logger'
 
 type PromiseResolverFn<T, E> = (value?: T, err?: E) => void
@@ -36,6 +37,7 @@ export function isError(value: unknown): value is Error {
  *     assertUnreachable(something)
  * }
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function assertUnreachable<T>(v: never): never
 export function assertUnreachable<T>(v: T) {
     throw new Error(`Unreachable Code Path for <${v}>`)
@@ -81,6 +83,7 @@ export function convertGitCloneURLToCodebaseNameOrError(cloneURL: string): strin
     }
     try {
         // Handle common Git SSH URL formats
+        // eslint-disable-next-line no-useless-escape
         const match = cloneURL.match(/^[\w-]+@([^:]+):(?:(\d+)\/)?([\w-\/\.]+)$/)
 
         if (match) {
@@ -110,7 +113,7 @@ export function convertGitCloneURLToCodebaseNameOrError(cloneURL: string): strin
         }
         return new Error('')
     } catch (error) {
-        return new Error(`Cody could not extract repo name from clone URL ${cloneURL}:`, {
+        return new Error(`Driver could not extract repo name from clone URL ${cloneURL}:`, {
             cause: error,
         })
     }
@@ -150,6 +153,7 @@ export function nextTick() {
 
 export type SemverString<Prefix extends string> = `${Prefix}${number}.${number}.${number}`
 
+// eslint-disable-next-line @typescript-eslint/no-namespace
 export namespace SemverString {
     const splitPrefixRegex = /^(?<prefix>.*)(?<version>\d+\.\d+\.\d+)$/
     export function forcePrefix<P extends string>(prefix: P, value: string): SemverString<P> {

@@ -1,3 +1,4 @@
+// cspell:ignore bluge symf
 import * as vscode from 'vscode'
 
 import {

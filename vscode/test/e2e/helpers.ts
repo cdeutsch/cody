@@ -13,11 +13,11 @@ import {
     test as base,
     expect as baseExpect,
 } from '@playwright/test'
-import type { RepoListResponse } from '@sourcegraph/cody-shared'
 import type {
+    RepoListResponse,
     RepositoryIdResponse,
     RepositoryIdsResponse,
-} from '@sourcegraph/cody-shared/src/sourcegraph-api/graphql/client'
+} from '@sourcegraph/cody-shared'
 import type { TelemetryEventInput } from '@sourcegraph/telemetry'
 import { resolveCliArgsFromVSCodeExecutablePath } from '@vscode/test-electron'
 import { _electron as electron } from 'playwright'
@@ -195,13 +195,13 @@ export const test = base
 
             let dotcomUrlOverride: { [key: string]: string } = {}
             if (dotcomUrl) {
-                dotcomUrlOverride = { CODY_OVERRIDE_DOTCOM_URL: dotcomUrl }
+                dotcomUrlOverride = { DRIVER_OVERRIDE_DOTCOM_URL: dotcomUrl }
             }
 
             const tmpLogFile = getTmpLogFile(testInfo.title)
             await mkdir(path.dirname(tmpLogFile), { recursive: true })
             await writeFile(tmpLogFile, '')
-            console.error('Cody output channel:', tmpLogFile)
+            console.error('Driver output channel:', tmpLogFile)
 
             //pre authenticated can ensure that a token is already set in the secret storage
             let secretStorageState: { [key: string]: string } = {}
@@ -254,12 +254,12 @@ export const test = base
                     ...process.env,
                     ...dotcomUrlOverride,
                     ...secretStorageState,
-                    CODY_TESTING: 'true',
-                    CODY_LOG_FILE: tmpLogFile,
+                    DRIVER_TESTING: 'true',
+                    DRIVER_LOG_FILE: tmpLogFile,
                 }
                 if (clientConfigSingletonRefetchInterval) {
                     // @ts-ignore
-                    env.CODY_CLIENT_CONFIG_SINGLETON_REFETCH_INTERVAL =
+                    env.DRIVER_CLIENT_CONFIG_SINGLETON_REFETCH_INTERVAL =
                         clientConfigSingletonRefetchInterval.toString()
                 }
                 const app = await electron.launch({
@@ -316,7 +316,7 @@ export const test = base
             }
             const page = await app.firstWindow()
 
-            // Bring the cody sidebar to the foreground if not already visible
+            // Bring the driver sidebar to the foreground if not already visible
             await focusSidebar(page)
             // Ensure that we remove the hover from the activity icon
             await page.getByRole('heading', { name: 'Cody: Chat' }).hover()

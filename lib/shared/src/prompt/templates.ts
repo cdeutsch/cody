@@ -1,7 +1,7 @@
 import type { URI } from 'vscode-uri'
 
-import { CodyIDE } from '..'
 import type { RangeData } from '../common/range'
+import { DriverIDE } from '../configuration'
 import type { ActiveTextEditorDiagnostic } from '../editor'
 import { displayPath } from '../editor/displayPath'
 import { PromptString, ps } from './prompt-string'
@@ -112,19 +112,19 @@ export function populateCodeGenerationContextTemplate(
         .replaceAll('{outputTag}', tag)
 }
 
-export function getClientPromptString(client: CodyIDE): PromptString {
+export function getClientPromptString(client: DriverIDE): PromptString {
     switch (client) {
-        case CodyIDE.Web:
-            return ps`Sourcegraph Web`
-        case CodyIDE.VisualStudio:
+        case DriverIDE.Web:
+            return ps`Driver Web`
+        case DriverIDE.VisualStudio:
             return ps`Visual Studio`
-        case CodyIDE.JetBrains:
+        case DriverIDE.JetBrains:
             return ps`JetBrains`
-        case CodyIDE.Eclipse:
+        case DriverIDE.Eclipse:
             return ps`Eclipse`
-        case CodyIDE.Emacs:
+        case DriverIDE.Emacs:
             return ps`Emacs`
-        case CodyIDE.Neovim:
+        case DriverIDE.Neovim:
             return ps`Neovim`
         default:
             return ps`VS Code`

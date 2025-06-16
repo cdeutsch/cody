@@ -2,7 +2,7 @@
   "name": "@sourcegraph/cody-web",
   "version": "0.32.5",
   "description": "Cody standalone web app",
-  "license": "Apache-2.0",
+  "license": "UNLICENSED",
   "repository": {
     "type": "git",
     "url": "https://github.com/sourcegraph/cody",
@@ -11,7 +11,9 @@
   "main": "dist/index.js",
   "types": "dist/lib/index.d.ts",
   "sideEffects": true,
-  "files": ["dist/*"],
+  "files": [
+    "dist/*"
+  ],
   "scripts": {
     "dev": "vite --mode development",
     "dev:standalone": "CODY_WEB_DEMO_STANDALONE_MODE=true vite --mode development",
@@ -30,7 +32,7 @@
     "@vscode/codicons": "^0.0.35",
     "buffer": "^6.0.3",
     "classnames": "^2.5.1",
-    "cody-ai": "workspace:*",
+    "driver-ai": "workspace:*",
     "events": "^3.3.0",
     "idb": "^8.0.0",
     "lodash": "4.17.21",

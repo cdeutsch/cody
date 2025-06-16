@@ -12,12 +12,12 @@ export function defaultConfigurationValue(key: string): any {
 type ConfigurationKeysMap = {
     // Use key remapping to get a nice typescript interface with the correct keys.
     // https://www.typescriptlang.org/docs/handbook/2/mapped-types.html#key-remapping-via-as
-    [key in keyof typeof properties as RemoveCodyPrefixAndCamelCase<key>]: key
+    [key in keyof typeof properties as RemoveDriverAiPrefixAndCamelCase<key>]: key
 }
 
 function getConfigFromPackageJson(): ConfigurationKeysMap {
     return Object.keys(properties).reduce<ConfigurationKeysMap>((acc, key) => {
-        // Remove the `cody.` prefix and camelCase the rest of the key.
+        // Remove the `driver-ai.` prefix and camelCase the rest of the key.
         const keyProperty = camelCase(key.split('.').slice(1).join('.')) as keyof ConfigurationKeysMap
 
         // This is just to hard to type correctly 😜 and it's doesn't make any difference.
@@ -30,7 +30,7 @@ function getConfigFromPackageJson(): ConfigurationKeysMap {
 
 // Use template literal type for string manipulation. See examples here:
 // https://www.typescriptlang.org/docs/handbook/2/template-literal-types.html
-type RemoveCodyPrefixAndCamelCase<T extends string> = T extends `cody.${infer A}`
+type RemoveDriverAiPrefixAndCamelCase<T extends string> = T extends `driver-ai.${infer A}`
     ? A extends `${infer B}.${infer C}`
         ? `${B}${CamelCaseDotSeparatedFragments<C>}`
         : `${A}`
@@ -42,10 +42,10 @@ type CamelCaseDotSeparatedFragments<T extends string> = T extends `${infer A}.${
 
 /**
  * Automatically infer the configuration keys from the package.json in a type-safe way.
- * All the keys are mapped into the `CONFIG_KEY` object by removing the `cody.` prefix and
- * camelcasing the rest of the dot separated fragments.
+ * All the keys are mapped into the `CONFIG_KEY` object by removing the `driver-ai.` prefix and
+ * camel casing the rest of the dot separated fragments.
  *
- * We should avoid specifiying config keys manually and instead rely on constant.
+ * We should avoid specifying config keys manually and instead rely on constant.
  * No manual changes will be required in this file when changing configuration keys in package.json.
  * TypeScript will error for all outdated/missing keys.
  */

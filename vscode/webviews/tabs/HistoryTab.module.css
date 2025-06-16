@@ -2,22 +2,12 @@ h4 {
     border-bottom: 1px solid var(--vscode-editorWidget-border);
 }
 
-.history-row {
-    display: flex;
-    flex-direction: row;
-}
-
 .delete-button {
     opacity: 0;
     height: 98%;
     padding: 0 !important;
     transition: opacity 0.2s ease;
     background: inherit !important;
-}
-
-.deleting-button {
-    opacity: 0.5 !important;
-    pointer-events: none;
 }
 
 .history-item:hover .delete-button {

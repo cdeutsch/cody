@@ -1,82 +1,69 @@
-import { isError } from 'lodash'
-import { authStatus } from '../auth/authStatus'
-import { firstValueFrom } from '../misc/observable'
-import { modelsService } from '../models/modelsService'
 import type { Message } from '../sourcegraph-api'
-import type { SourcegraphCompletionsClient } from '../sourcegraph-api/completions/client'
-import type {
-    CompletionGeneratorValue,
-    CompletionParameters,
-} from '../sourcegraph-api/completions/types'
-import { currentSiteVersion } from '../sourcegraph-api/siteVersion'
 
-type ChatParameters = Omit<CompletionParameters, 'messages'>
+// type ChatParameters = Omit<CompletionParameters, 'messages'>;
 
-const DEFAULT_CHAT_COMPLETION_PARAMETERS: Omit<ChatParameters, 'maxTokensToSample'> = {
-    temperature: 0.2,
-    topK: -1,
-    topP: -1,
-}
+// const DEFAULT_CHAT_COMPLETION_PARAMETERS: Omit<ChatParameters, 'maxTokensToSample'> = {
+//   temperature: 0.2,
+//   topK: -1,
+//   topP: -1,
+// };
 
-export class ChatClient {
-    constructor(private completions: SourcegraphCompletionsClient) {}
+// export class ChatClient {
+//   constructor(private completions: SourcegraphCompletionsClient) {}
 
-    public async chat(
-        messages: Message[],
-        params: Partial<ChatParameters> & Pick<ChatParameters, 'maxTokensToSample'>,
-        abortSignal?: AbortSignal,
-        interactionId?: string
-    ): Promise<AsyncGenerator<CompletionGeneratorValue>> {
-        // Replace internal models used for wrapper models with the actual model ID.
-        if (params.model?.includes('deep-cody')) {
-            const sonnetModel = modelsService.getAllModelsWithSubstring('sonnet')[0]
-            params.model = sonnetModel.id
-        }
+//   public async chat(
+//     messages: Message[],
+//     params: Partial<ChatParameters> & Pick<ChatParameters, 'maxTokensToSample'>,
+//     abortSignal?: AbortSignal,
+//     interactionId?: string
+//   ): Promise<AsyncGenerator<CompletionGeneratorValue>> {
+//     // Replace internal models used for wrapper models with the actual model ID.
+//     if (params.model?.includes('deep-driver')) {
+//       const sonnetModel = modelsService.getAllModelsWithSubstring('sonnet')[0];
+//       params.model = sonnetModel.id;
+//     }
 
-        const [versions, authStatus_] = await Promise.all([
-            currentSiteVersion(),
-            await firstValueFrom(authStatus),
-        ])
+//     const [versions, authStatus_] = await Promise.all([currentSiteVersion(), await firstValueFrom(authStatus)]);
 
-        if (isError(versions)) {
-            throw versions
-        }
+//     if (isError(versions)) {
+//       throw versions;
+//     }
 
-        if (!authStatus_.authenticated) {
-            throw new Error('not authenticated')
-        }
+//     if (!authStatus_.authenticated) {
+//       throw new Error('not authenticated');
+//     }
 
-        const requestParams = buildChatRequestParams({
-            model: params.model,
-            codyAPIVersion: versions.codyAPIVersion,
-            isFireworksTracingEnabled: !!authStatus_.isFireworksTracingEnabled,
-            interactionId,
-        })
+//     const requestParams = buildChatRequestParams({
+//       model: params.model,
+//       driverAPIVersion: versions.driverAPIVersion,
+//       isFireworksTracingEnabled: !!authStatus_.isFireworksTracingEnabled,
+//       interactionId,
+//     });
 
-        // Sanitize messages before sending them to the completions API.
-        messages = sanitizeMessages(messages)
+//     // Sanitize messages before sending them to the completions API.
+//     messages = sanitizeMessages(messages);
 
-        // Older models or API versions look for prepended assistant messages.
-        if (requestParams.apiVersion === 0 && messages.at(-1)?.speaker === 'human') {
-            messages = messages.concat([{ speaker: 'assistant' }])
-        }
+//     // Older models or API versions look for prepended assistant messages.
+//     if (requestParams.apiVersion === 0 && messages.at(-1)?.speaker === 'human') {
+//       messages = messages.concat([{ speaker: 'assistant' }]);
+//     }
 
-        const completionParams = {
-            ...DEFAULT_CHAT_COMPLETION_PARAMETERS,
-            ...params,
-            // We only want to send up the speaker and prompt text, regardless of whatever other fields
-            // might be on the messages objects (`file`, `displayText`, `contextFiles`, etc.).
-            messages: messages.map(({ speaker, text, cacheEnabled, content }) => ({
-                text,
-                speaker,
-                cacheEnabled,
-                content,
-            })),
-        } as CompletionParameters
+//     const completionParams = {
+//       ...DEFAULT_CHAT_COMPLETION_PARAMETERS,
+//       ...params,
+//       // We only want to send up the speaker and prompt text, regardless of whatever other fields
+//       // might be on the messages objects (`file`, `displayText`, `contextFiles`, etc.).
+//       messages: messages.map(({ speaker, text, cacheEnabled, content }) => ({
+//         text,
+//         speaker,
+//         cacheEnabled,
+//         content,
+//       })),
+//     } as CompletionParameters;
 
-        return this.completions.stream(completionParams, requestParams, abortSignal)
-    }
-}
+//     return this.completions.stream(completionParams, requestParams, abortSignal);
+//   }
+// }
 
 /**
  * Sanitizes an array of conversation messages to ensure proper formatting for model processing.
@@ -137,24 +124,24 @@ export function sanitizeMessages(messages: Message[]): Message[] {
  * @param options - The options for building the chat request parameters.
  * @returns The request parameters for the chat API.
  */
-export function buildChatRequestParams({
-    model,
-    codyAPIVersion,
-    isFireworksTracingEnabled,
-    interactionId,
-}: {
-    model?: string
-    codyAPIVersion: number
-    isFireworksTracingEnabled: boolean
-    interactionId?: string
-}): { apiVersion: number; interactionId?: string; customHeaders: Record<string, string> } {
-    const requestParams = { apiVersion: codyAPIVersion, interactionId, customHeaders: {} }
+// export function buildChatRequestParams({
+//   model,
+//   driverAPIVersion,
+//   isFireworksTracingEnabled,
+//   interactionId,
+// }: {
+//   model?: string;
+//   driverAPIVersion: number;
+//   isFireworksTracingEnabled: boolean;
+//   interactionId?: string;
+// }): { apiVersion: number; interactionId?: string; customHeaders: Record<string, string> } {
+//   const requestParams = { apiVersion: driverAPIVersion, interactionId, customHeaders: {} };
 
-    // Enabled Fireworks tracing for Sourcegraph teammates.
-    // https://readme.fireworks.ai/docs/enabling-tracing
-    if (model?.startsWith('fireworks') && isFireworksTracingEnabled) {
-        requestParams.customHeaders = { 'X-Fireworks-Genie': 'true' }
-    }
+//   // Enabled Fireworks tracing for Sourcegraph teammates.
+//   // https://readme.fireworks.ai/docs/enabling-tracing
+//   if (model?.startsWith('fireworks') && isFireworksTracingEnabled) {
+//     requestParams.customHeaders = { 'X-Fireworks-Genie': 'true' };
+//   }
 
-    return requestParams
-}
+//   return requestParams;
+// }

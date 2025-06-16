@@ -1,12 +1,12 @@
 import {
+    type RemoteRepo,
     abortableOperation,
     authStatus,
     combineLatest,
     debounceTime,
     firstValueFrom,
     fromVSCodeEvent,
-    graphqlClient,
-    isError,
+    getRepoIds,
     type pendingOperation,
     skipPendingOperation,
     startWith,
@@ -16,14 +16,6 @@ import { Observable, map } from 'observable-fns'
 import * as vscode from 'vscode'
 import { vscodeGitAPI } from './git-extension-api'
 import { repoNameResolver } from './repo-name-resolver'
-
-export interface RemoteRepo {
-    /** The name of the repository (e.g., `github.com/foo/bar`). */
-    name: string
-
-    /** The GraphQL ID of the repository on the Sourcegraph instance. */
-    id: string
-}
 
 const MAX_REPO_COUNT = 10
 
@@ -80,15 +72,9 @@ export const remoteReposForAllWorkspaceFolders: Observable<
                     }
                     // Process the validated results without checking for pendingOperation that
                     // would cause the abortableOperation to hang indefinitely.
-                    const reposOrError = await graphqlClient.getRepoIds(
-                        repoNames,
-                        MAX_REPO_COUNT,
-                        signal
-                    )
-                    if (isError(reposOrError)) {
-                        throw reposOrError
-                    }
-                    return reposOrError
+                    const repos = await getRepoIds(repoNames, MAX_REPO_COUNT, signal)
+
+                    return repos
                 })
             )
         }

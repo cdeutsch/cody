@@ -1,31 +1,31 @@
-import { CodyIDE } from '../configuration'
+import { DriverIDE } from '../configuration'
 import { clientCapabilities } from '../configuration/clientCapabilities'
 
 /**
  * Returns a known referral code to use based on the current VS Code environment.
  * IMPORTANT: The code must be registered in the server-side referral code mapping:
  * @link client/web/src/user/settings/accessTokens/UserSettingsCreateAccessTokenCallbackPage.tsx
- * Use "CODY" as the default referral code for fallback.
+ * Use "DRIVER" as the default referral code for fallback.
  */
-export function getCodyAuthReferralCode(uriScheme: string): string | undefined {
-    const referralCodes: Partial<Record<CodyIDE, string>> = {
-        [CodyIDE.JetBrains]: 'JETBRAINS',
-        [CodyIDE.Neovim]: 'NEOVIM',
-        [CodyIDE.Emacs]: 'CODY',
-        [CodyIDE.VisualStudio]: 'VISUAL_STUDIO',
-        [CodyIDE.Eclipse]: 'ECLIPSE',
-        [CodyIDE.VSCode]: 'CODY',
-        [CodyIDE.Web]: 'CODY',
+export function getDriverAuthReferralCode(uriScheme: string): string | undefined {
+    const referralCodes: Partial<Record<DriverIDE, string>> = {
+        [DriverIDE.JetBrains]: 'jetbrains',
+        [DriverIDE.Neovim]: 'neovim',
+        [DriverIDE.Emacs]: 'driver',
+        [DriverIDE.VisualStudio]: 'visual_studio',
+        [DriverIDE.Eclipse]: 'eclipse',
+        [DriverIDE.VSCode]: 'vscode',
+        [DriverIDE.Web]: 'driver',
     }
 
-    if (clientCapabilities().agentIDE === CodyIDE.VSCode) {
+    if (clientCapabilities().agentIDE === DriverIDE.VSCode) {
         switch (uriScheme) {
             case 'vscode-insiders':
-                return 'CODY_INSIDERS'
+                return 'insiders'
             case 'vscodium':
-                return 'CODY_VSCODIUM'
+                return 'vscodium'
             case 'cursor':
-                return 'CODY_CURSOR'
+                return 'cursor'
         }
     }
 

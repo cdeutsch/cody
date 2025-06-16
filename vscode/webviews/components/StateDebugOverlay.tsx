@@ -1,10 +1,5 @@
 import * as Tabs from '@radix-ui/react-tabs'
-import type {
-    AuthStatus,
-    ChatMessage,
-    ModelsData,
-    ResolvedConfiguration,
-} from '@sourcegraph/cody-shared'
+import type { AuthStatus, ChatMessage, ResolvedConfiguration } from '@sourcegraph/cody-shared'
 import { useDefaultContextForChat, useExtensionAPI, useObservable } from '@sourcegraph/prompt-editor'
 import clsx from 'clsx'
 import React, { type FunctionComponent, useMemo } from 'react'
@@ -17,7 +12,7 @@ import { TabContainer, TabRoot } from './shadcn/ui/tabs'
  * A component that displays the current state (configuration, auth status, models, etc.) at the top
  * of the {@link CodyPanel}.
  *
- * To enable, set the `cody.internal.debug.state` user setting to `true`.
+ * To enable, set the `driver-ai.internal.debug.state` user setting to `true`.
  */
 export const StateDebugOverlay: FunctionComponent<Record<string, never>> = () => {
     // First, only observe the resolvedConfig so that if this overlay is disabled, we don't incur the overhead of all the other observable subscriptions.
@@ -33,7 +28,6 @@ const StateDebugOverlayInner: FunctionComponent<{ resolvedConfig: ResolvedConfig
     resolvedConfig,
 }) => {
     const authStatus = useAuthStatus()
-    const modelsData = useModelsData()
     const transcript = useTranscript()
     const { initialContext } = useDefaultContextForChat()
 
@@ -50,16 +44,17 @@ const StateDebugOverlayInner: FunctionComponent<{ resolvedConfig: ResolvedConfig
             {
                 id: 'authStatus',
                 title: `authStatus ${
-                    authStatus ? `(${new URL(authStatus.endpoint).hostname})` : '(undefined)'
+                    authStatus
+                        ? `(${authStatus.authenticated ? 'authenticated' : 'unauthenticated'})`
+                        : '(undefined)'
                 }`,
                 value: authStatus,
             },
-            { id: 'modelsData', value: modelsData },
             { id: 'transcript', value: transcript },
             { id: 'initialContext', value: initialContext },
             { id: 'actions', title: 'Actions' },
         ],
-        [resolvedConfig, authStatus, modelsData, transcript, initialContext]
+        [resolvedConfig, authStatus, transcript, initialContext]
     )
 
     const [openTabIDs, setOpenTabIDs] = useLocalStorage<(typeof tabs)[number]['id'][] | null>(
@@ -146,11 +141,6 @@ function useResolvedConfig(): ResolvedConfiguration | undefined {
 function useAuthStatus(): AuthStatus | undefined {
     const authStatus = useExtensionAPI().authStatus
     return useObservable(useMemo(() => authStatus(), [authStatus])).value
-}
-
-function useModelsData(): ModelsData | null | undefined {
-    const models = useExtensionAPI().models
-    return useObservable(useMemo(() => models(), [models])).value
 }
 
 function useTranscript(): readonly ChatMessage[] | undefined {

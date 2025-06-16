@@ -1,3 +1,4 @@
+// cspell:ignore hehe foobarbaz
 import { describe, expect, it } from 'vitest'
 import type * as vscode from 'vscode'
 import { testFileUri } from '../test/path-helpers'
@@ -63,11 +64,11 @@ describe('PromptString', () => {
 
         const allowPolicy = {
             isUriIgnored: () => Promise.resolve(false as const),
-            toDebugObject: () => ({ lastContextFiltersResponse: null }),
+            // toDebugObject: () => ({ lastContextFiltersResponse: null }),
         }
         const denyPolicy = {
             isUriIgnored: () => Promise.resolve('repo:foo' as const),
-            toDebugObject: () => ({ lastContextFiltersResponse: null }),
+            // toDebugObject: () => ({ lastContextFiltersResponse: null }),
         }
 
         expect(await promptString.toFilteredString(allowPolicy)).toEqual('i am from a file')

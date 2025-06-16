@@ -1,3 +1,4 @@
+// cspell:ignore undoable
 import * as Dialog from '@radix-ui/react-dialog'
 import * as Tabs from '@radix-ui/react-tabs'
 
@@ -14,27 +15,23 @@ import {
 import { getVSCodeAPI } from '../utils/VSCodeApi'
 import { View } from './types'
 
-import { type AuthenticatedAuthStatus, CodyIDE, isDefined } from '@sourcegraph/cody-shared'
+import { DriverIDE, isDefined } from '@sourcegraph/cody-shared'
 import { type FC, Fragment, forwardRef, memo, useCallback, useMemo, useState } from 'react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../components/shadcn/ui/tooltip'
 import { useConfig } from '../utils/useConfig'
 
 import { useExtensionAPI } from '@sourcegraph/prompt-editor'
 import { isEqual } from 'lodash'
-import type { UserAccountInfo } from '../Chat'
 import { downloadChatHistory } from '../chat/downloadChatHistory'
 import { UserMenu } from '../components/UserMenu'
 import { Button } from '../components/shadcn/ui/button'
+import { useUser } from '../contexts/UserContext'
 import styles from './TabsBar.module.css'
 import { getCreateNewChatCommand } from './utils'
 
 interface TabsBarProps {
-    user: UserAccountInfo
     currentView: View
     setView: (view: View) => void
-    endpointHistory: string[]
-    // Whether to show the Sourcegraph Teams upgrade CTA or not.
-    isWorkspacesUpgradeCtaEnabled?: boolean
     showOpenInEditor?: boolean
 }
 
@@ -70,11 +67,11 @@ interface TabConfig {
 }
 
 export const TabsBar = memo<TabsBarProps>(props => {
-    const { currentView, setView, user, endpointHistory, showOpenInEditor } = props
-    const { isCodyProUser, IDE } = user
-    const tabItems = useTabs({ user })
+    const { IDE } = useUser()
+    const { currentView, setView, showOpenInEditor } = props
+    const tabItems = useTabs(IDE)
     const {
-        config: { webviewType, multipleWebviewsEnabled, allowEndpointChange },
+        config: { webviewType },
     } = useConfig()
     const currentViewSubActions = tabItems.find(tab => tab.view === currentView)?.subActions ?? []
 
@@ -109,8 +106,8 @@ export const TabsBar = memo<TabsBarProps>(props => {
     )
 
     return (
-        <div className={clsx(styles.tabsRoot, { [styles.tabsRootCodyWeb]: IDE === CodyIDE.Web })}>
-            <Tabs.List aria-label="cody-webview" className={styles.tabsContainer}>
+        <div className={clsx(styles.tabsRoot)}>
+            <Tabs.List aria-label="driver-webview" className={styles.tabsContainer}>
                 <div className={styles.tabs}>
                     {tabItems.map(({ Icon, view, command, title, changesView }) => (
                         <Tabs.Trigger key={view} value={view} asChild={true}>
@@ -131,7 +128,7 @@ export const TabsBar = memo<TabsBarProps>(props => {
                             Icon={MessageSquarePlusIcon}
                             title={'New Chat'}
                             IDE={IDE}
-                            tooltipExtra={IDE === CodyIDE.VSCode && '(⇧⌥/)'}
+                            tooltipExtra={IDE === DriverIDE.VSCode && '(⇧⌥/)'}
                             view={View.Chat}
                             data-testid="new-chat-button"
                             onClick={() =>
@@ -140,7 +137,6 @@ export const TabsBar = memo<TabsBarProps>(props => {
                                     command: getCreateNewChatCommand({
                                         IDE,
                                         webviewType,
-                                        multipleWebviewsEnabled,
                                     }),
                                 })
                             }
@@ -156,22 +152,13 @@ export const TabsBar = memo<TabsBarProps>(props => {
                                 onClick={() =>
                                     handleSubActionClick({
                                         changesView: View.Chat,
-                                        command: 'cody.chat.moveToEditor',
+                                        command: 'driver-ai.chat.moveToEditor',
                                     })
                                 }
                             />
                         )}
-                        {IDE !== CodyIDE.Web && (
-                            <UserMenu
-                                authStatus={user.user as AuthenticatedAuthStatus}
-                                isProUser={isCodyProUser}
-                                endpointHistory={endpointHistory}
-                                allowEndpointChange={allowEndpointChange}
-                                className="!tw-opacity-100 tw-h-full"
-                                isWorkspacesUpgradeCtaEnabled={props.isWorkspacesUpgradeCtaEnabled}
-                                IDE={IDE}
-                                setTabView={setView}
-                            />
+                        {IDE !== DriverIDE.Web && (
+                            <UserMenu className="!tw-opacity-100 tw-h-full" setTabView={setView} />
                         )}
                     </div>
                 </div>
@@ -211,7 +198,7 @@ export const TabsBar = memo<TabsBarProps>(props => {
 interface ActionButtonWithConfirmationProps {
     title: string
     Icon: IconComponent
-    IDE: CodyIDE
+    IDE: DriverIDE
     prominent?: boolean
     alwaysShowTitle?: boolean
     /** Extra content to display in the tooltip (in addition to the title). */
@@ -256,7 +243,7 @@ const ActionButtonWithConfirmation: FC<ActionButtonWithConfirmationProps> = prop
 
             <Dialog.Portal>
                 <Dialog.Overlay className={styles.dialogOverlay} />
-                <Dialog.Content className={styles.dialogContent} data-cody-ui-dialog>
+                <Dialog.Content className={styles.dialogContent} data-driver-ui-dialog>
                     <Dialog.Title className={styles.dialogTitle}>{dialogTitle}</Dialog.Title>
 
                     <Dialog.Description className={styles.dialogDescription}>
@@ -287,7 +274,7 @@ const ActionButtonWithConfirmation: FC<ActionButtonWithConfirmationProps> = prop
 interface TabButtonProps {
     title: string
     Icon: IconComponent
-    IDE: CodyIDE
+    IDE: DriverIDE
     uri?: string
     view?: View
     isActive?: boolean
@@ -344,7 +331,7 @@ const TabButton = forwardRef<HTMLButtonElement, TabButtonProps>((props, ref) => 
                     )}
                 </Component>
             </TooltipTrigger>
-            <TooltipContent portal={IDE === CodyIDE.Web}>
+            <TooltipContent portal={IDE === DriverIDE.Web}>
                 {title} {tooltipExtra}
             </TooltipContent>
         </Tooltip>
@@ -357,8 +344,7 @@ TabButton.displayName = 'TabButton'
  * Returns list of tabs and its sub-action buttons, used later as configuration for
  * tabs rendering in chat header.
  */
-function useTabs(input: Pick<TabsBarProps, 'user'>): TabConfig[] {
-    const IDE = input.user.IDE
+function useTabs(IDE: DriverIDE): TabConfig[] {
     const extensionAPI = useExtensionAPI<'userHistory'>()
 
     return useMemo<TabConfig[]>(
@@ -376,21 +362,21 @@ function useTabs(input: Pick<TabsBarProps, 'user'>): TabConfig[] {
                         title: 'History',
                         Icon: HistoryIcon,
                         subActions:
-                            IDE === CodyIDE.Web
+                            IDE === DriverIDE.Web
                                 ? [
                                       {
                                           title: 'Export',
                                           Icon: DownloadIcon,
-                                          command: 'cody.chat.history.export',
+                                          command: 'driver-ai.chat.history.export',
                                           callback: () => downloadChatHistory(extensionAPI),
                                       },
                                       {
                                           title: 'Delete all',
                                           Icon: Trash2Icon,
-                                          command: 'cody.chat.history.clear',
+                                          command: 'driver-ai.chat.history.clear',
 
-                                          // Show Cody Chat UI confirmation modal with this message only for
-                                          // Cody Web. All other IDE either implements their own native confirmation UI
+                                          // Show Driver Chat UI confirmation modal with this message only for
+                                          // Driver Web. All other IDE either implements their own native confirmation UI
                                           // or don't have confirmation UI at all.
                                           confirmation: {
                                               title: 'Are you sure you want to delete all of your chats?',
@@ -398,9 +384,9 @@ function useTabs(input: Pick<TabsBarProps, 'user'>): TabConfig[] {
                                                   'You will not be able to recover them once deleted.',
                                               confirmationAction: 'Delete all chats',
                                           },
-                                          // We don't have a way to request user confirmation in Cody Agent
+                                          // We don't have a way to request user confirmation in Driver Agent
                                           // (vscode.window.showWarningMessage is overridable there), so bypass
-                                          // confirmation in cody agent and use confirmation UI above.
+                                          // confirmation in driver agent and use confirmation UI above.
                                           arg: 'clear-all-no-confirm',
                                       },
                                   ].filter(isDefined)

@@ -6,7 +6,6 @@ import {
     type ModelContextWindow,
     PromptString,
     TokenCounter,
-    contextFiltersProvider,
     featureFlagProvider,
     ps,
     storeLastValue,
@@ -55,7 +54,7 @@ export class PromptBuilder {
     private constructor(private readonly tokenCounter: TokenCounter) {}
 
     private readonly hasCacheFeatureFlag = storeLastValue(
-        featureFlagProvider.evaluatedFeatureFlag(FeatureFlag.CodyPromptCachingOnMessages)
+        featureFlagProvider.evaluatedFeatureFlag(FeatureFlag.DriverPromptCachingOnMessages)
     )
     private readonly _isCacheEnabled: PromptCachingSetting = {
         featureFlag: false,
@@ -66,7 +65,7 @@ export class PromptBuilder {
         const isFlagEnabled = Boolean(this.hasCacheFeatureFlag?.value?.last ?? false)
         if (!this._isCacheEnabled.isEnrolled) {
             this._isCacheEnabled.isEnrolled = logFirstEnrollmentEvent(
-                FeatureFlag.CodyPromptCachingOnMessages,
+                FeatureFlag.DriverPromptCachingOnMessages,
                 isFlagEnabled
             )
         }
@@ -217,11 +216,11 @@ export class PromptBuilder {
         contextItems = sortContextItemsIfInTest(contextItems)
 
         for (const item of contextItems) {
-            // Skip context items that are in the Cody ignore list
-            if (await contextFiltersProvider.isUriIgnored(item.uri)) {
-                result.ignored.push(item)
-                continue
-            }
+            // Skip context items that are in the Driver ignore list
+            // if (await contextFiltersProvider.isUriIgnored(item.uri)) {
+            //   result.ignored.push(item);
+            //   continue;
+            // }
 
             // Special-case remote context here. We can usually rely on the remote context to honor
             // any context filters but in case of client side overwrites, we want a file that is
@@ -229,8 +228,7 @@ export class PromptBuilder {
             if (
                 item.type === 'file' &&
                 (item?.uri?.scheme === 'https' || item?.uri?.scheme === 'http') &&
-                item.repoName &&
-                (await contextFiltersProvider.isRepoNameIgnored(item.repoName))
+                item.repoName
             ) {
                 result.ignored.push(item)
                 continue
@@ -283,10 +281,10 @@ export class PromptBuilder {
             this.contextItems = getUniqueContextItems(this.contextItems)
         }
 
-        // Remove the Cody Chat Memory from showing up in the context list.
-        // TODO: Remove this once the Cody Chat Memory is out of experimental.
+        // Remove the Driver Chat Memory from showing up in the context list.
+        // TODO: Remove this once the Driver Chat Memory is out of experimental.
         result.added = this.contextItems.filter(
-            c => result.added.includes(c) && c.title !== 'Cody Chat Memory'
+            c => result.added.includes(c) && c.title !== 'Driver Chat Memory'
         )
         return result
     }

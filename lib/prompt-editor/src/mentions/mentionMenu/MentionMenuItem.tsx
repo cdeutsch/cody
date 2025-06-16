@@ -61,6 +61,7 @@ function getDescription(item: ContextItem, query: MentionQuery): string {
             const dir = decodeURIComponent(displayPathDirname(item.uri))
             return `${range ? `Lines ${displayLineRange(range)} · ` : ''}${dir === '.' ? '' : dir}`
         }
+        case 'pdf':
         case 'repository':
         case 'tree':
             return '' // no description since it's duplicative

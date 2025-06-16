@@ -12,6 +12,7 @@ import type {
     ContextItemMedia,
     ContextItemOpenCtx,
     ContextItemOpenLink,
+    ContextItemPdf,
     ContextItemRepository,
     ContextItemSource,
     ContextItemSymbol,
@@ -41,6 +42,7 @@ export type SerializedContextItem = {
     source?: ContextItemSource
 } & (
     | Omit<ContextItemFile, 'uri' | 'content' | 'source'>
+    | Omit<ContextItemPdf, 'uri' | 'content' | 'source'>
     | Omit<ContextItemRepository, 'uri' | 'content' | 'source'>
     | Omit<ContextItemTree, 'uri' | 'content' | 'source'>
     | Omit<ContextItemSymbol, 'uri' | 'content' | 'source'>
@@ -322,6 +324,9 @@ export function contextItemMentionNodeDisplayText(contextItem: SerializedContext
                 return contextItem.title
             }
             return `${decodeURIComponent(displayPathBasename(URI.parse(contextItem.uri)))}${rangeText}`
+
+        case 'pdf':
+            return contextItem.title ?? 'unknown pdf'
 
         case 'repository':
             return trimCommonRepoNamePrefixes(contextItem.repoName) ?? 'unknown repository'

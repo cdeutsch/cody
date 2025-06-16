@@ -24,7 +24,7 @@ export async function downloadChatHistory(
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5) // Format: YYYY-MM-DDTHH-mm
     const a = document.createElement('a') // a temporary anchor element
     a.href = url
-    a.download = `cody-chat-history-${timestamp}.json`
+    a.download = `driver-chat-history-${timestamp}.json`
     a.target = '_blank'
     a.click()
 }

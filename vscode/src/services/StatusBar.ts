@@ -3,26 +3,15 @@ import * as vscode from 'vscode'
 import {
     type AuthStatus,
     type ClientConfiguration,
-    CodyAutoSuggestionMode,
-    CodyIDE,
-    FeatureFlag,
     InvisibleStatusBarTag,
-    type IsIgnored,
     Mutable,
     type ResolvedConfiguration,
-    type UserProductSubscription,
     assertUnreachable,
     authStatus,
     combineLatest,
-    contextFiltersProvider,
-    currentUserProductSubscription,
-    distinctUntilChanged,
-    featureFlagProvider,
     firstValueFrom,
-    fromVSCodeEvent,
     logError,
     promise,
-    promiseFactoryToObservable,
     resolvedConfig,
     shareReplay,
 } from '@sourcegraph/cody-shared'
@@ -33,12 +22,7 @@ import {
 } from '@sourcegraph/cody-shared/src/sourcegraph-api/errors'
 import { type Subscription, map } from 'observable-fns'
 import type { LiteralUnion, ReadonlyDeep } from 'type-fest'
-import { isUserEligibleForAutoeditsFeature } from '../autoedits/create-autoedits-provider'
-import { ignoreReason } from '../cody-ignore/notification'
-import { getGhostHintEnablement } from '../commands/GhostHintDecorator'
-import { getReleaseNotesURLByIDE } from '../release'
 import { version } from '../version'
-import { FeedbackOptionItems, SupportOptionItems } from './FeedbackOptions'
 import { enableVerboseDebugMode } from './utils/export-logs'
 
 const QUICK_PICK_ITEM_CHECKED_PREFIX = '$(check) '
@@ -46,7 +30,7 @@ const QUICK_PICK_ITEM_EMPTY_INDENT_PREFIX = '\u00A0\u00A0\u00A0\u00A0\u00A0 '
 
 const ONE_HOUR = 60 * 60 * 1000
 
-const STATUS_BAR_INTERACTION_COMMAND = 'cody.status-bar.interacted'
+const STATUS_BAR_INTERACTION_COMMAND = 'driver-ai.status-bar.interacted'
 
 interface StatusBarState {
     text: string
@@ -74,29 +58,14 @@ export class CodyStatusBar implements vscode.Disposable {
         this.handleInteraction.bind(this)
     )
 
-    private ignoreStatus = combineLatest(
-        fromVSCodeEvent(
-            vscode.window.onDidChangeActiveTextEditor,
-            () => vscode.window.activeTextEditor
-        ).pipe(distinctUntilChanged()),
-        // TODO: technically this shouldn't be needed but the contextFilterProvider doesn't update on auth changes yet
-        authStatus,
-        contextFiltersProvider.changes
-    ).pipe(
-        map(async ([editor]) => {
-            const uri = editor?.document.uri
-            const isIgnored = uri ? await contextFiltersProvider.isUriIgnored(uri) : false
-            return isIgnored
-        })
-    )
     private state = combineLatest(
         authStatus,
         resolvedConfig,
         this.errors.changes,
-        this.loaders.changes,
-        this.ignoreStatus,
-        featureFlagProvider.evaluatedFeatureFlag(FeatureFlag.CodyAutoEditExperimentEnabledFeatureFlag),
-        promiseFactoryToObservable(async () => await currentUserProductSubscription())
+        this.loaders.changes
+        // this.ignoreStatus
+        // featureFlagProvider.evaluatedFeatureFlag(FeatureFlag.CodyAutoEditExperimentEnabledFeatureFlag),
+        // promiseFactoryToObservable(async () => await currentUserProductSubscription())
     ).pipe(
         map((combined): StatusBarState | undefined => {
             return {
@@ -120,7 +89,7 @@ export class CodyStatusBar implements vscode.Disposable {
 
     static init(): CodyStatusBar {
         if (CodyStatusBar.singleton) {
-            throw new Error('CodyStatusBar already initialized')
+            throw new Error('DriverStatusBar already initialized')
         }
         CodyStatusBar.singleton = new CodyStatusBar()
         return CodyStatusBar.singleton
@@ -275,10 +244,7 @@ export class CodyStatusBar implements vscode.Disposable {
         authStatus: AuthStatus,
         config: ResolvedConfiguration,
         errors: ReadonlySet<StatusBarError>,
-        loaders: ReadonlySet<StatusBarLoader>,
-        ignoreStatus: IsIgnored,
-        autoeditsFeatureFlagEnabled: boolean,
-        userProductSubscription: UserProductSubscription | null
+        loaders: ReadonlySet<StatusBarLoader>
     ): Partial<StatusBarState> & Pick<StatusBarState, 'interact' | 'tooltip'> {
         const tags = new Set<InvisibleStatusBarTag>()
 
@@ -293,9 +259,9 @@ export class CodyStatusBar implements vscode.Disposable {
         if (loaders.size > 0) {
             tags.add(InvisibleStatusBarTag.HasLoaders)
         }
-        if (ignoreStatus !== false) {
-            tags.add(InvisibleStatusBarTag.IsIgnored)
-        }
+        // if (ignoreStatus !== false) {
+        //     tags.add(InvisibleStatusBarTag.IsIgnored)
+        // }
         if (authStatus.pendingValidation) {
             return {
                 icon: 'loading',
@@ -329,9 +295,6 @@ export class CodyStatusBar implements vscode.Disposable {
                 interact: interactDefault({
                     config,
                     errors,
-                    isIgnored: ignoreStatus,
-                    autoeditsFeatureFlagEnabled,
-                    userProductSubscription,
                     authStatus,
                 }),
             }
@@ -352,7 +315,7 @@ export class CodyStatusBar implements vscode.Disposable {
 
             return {
                 text: 'Sign In',
-                tooltip: 'Sign in to get started with Cody.',
+                tooltip: 'Sign in to get started with Driver.',
                 style: 'warning',
                 tags,
                 interact: interactAuth,
@@ -364,47 +327,40 @@ export class CodyStatusBar implements vscode.Disposable {
             return {
                 icon: 'loading',
                 tooltip: isStarting
-                    ? 'Cody is getting ready...'
+                    ? 'Driver is getting ready...'
                     : `${loaders.values().next().value.title}`,
                 style: 'normal',
                 tags,
                 interact: interactDefault({
                     config,
                     errors,
-                    isIgnored: ignoreStatus,
-                    autoeditsFeatureFlagEnabled,
-                    userProductSubscription,
                     authStatus,
                 }),
             }
         }
 
-        if (ignoreStatus !== false) {
-            const reason = ignoreReason(ignoreStatus)
-            return {
-                icon: 'disabled',
-                tooltip: reason || 'Cody is disabled',
-                style: 'disabled',
-                tags,
-                interact: interactDefault({
-                    config,
-                    errors,
-                    isIgnored: ignoreStatus,
-                    autoeditsFeatureFlagEnabled,
-                    userProductSubscription,
-                    authStatus,
-                }),
-            }
-        }
+        // if (ignoreStatus !== false) {
+        //     // const reason = ignoreReason(ignoreStatus)
+        //     const reason = null;
+        //     return {
+        //         icon: 'disabled',
+        //         tooltip: reason || 'Driver is disabled',
+        //         style: 'disabled',
+        //         tags,
+        //         interact: interactDefault({
+        //             config,
+        //             errors,
+        //             isIgnored: ignoreStatus,
+        //             authStatus,
+        //         }),
+        //     }
+        // }
 
         return {
-            tooltip: 'Cody Settings',
+            tooltip: 'Driver Settings',
             interact: interactDefault({
                 config,
                 errors,
-                isIgnored: ignoreStatus,
-                autoeditsFeatureFlagEnabled,
-                userProductSubscription,
                 authStatus,
             }),
         }
@@ -420,33 +376,27 @@ export class CodyStatusBar implements vscode.Disposable {
 }
 
 async function interactAuth(abort: AbortSignal) {
-    void vscode.commands.executeCommand('cody.chat.focus')
+    void vscode.commands.executeCommand('driver-ai.chat.focus')
 }
 
 async function interactNetworkIssues(abort: AbortSignal) {
-    void vscode.commands.executeCommand('cody.debug.net.showOutputChannel')
+    void vscode.commands.executeCommand('driver-ai.debug.net.showOutputChannel')
 }
 
 function interactDefault({
     config,
     errors,
-    isIgnored,
-    autoeditsFeatureFlagEnabled,
-    userProductSubscription,
     authStatus,
 }: {
     config: ResolvedConfiguration
     errors: ReadonlySet<StatusBarError>
-    isIgnored: IsIgnored
-    autoeditsFeatureFlagEnabled: boolean
-    userProductSubscription: UserProductSubscription | null
     authStatus: AuthStatus
 }): (abort: AbortSignal) => Promise<void> {
     return async (abort: AbortSignal) => {
         const [interactionDone] = promise<void>()
         // this QuickPick could probably be made reactive but that's a bit overkill.
         const quickPick = vscode.window.createQuickPick()
-        const currentIgnoreReason = ignoreReason(isIgnored)
+        // const currentIgnoreReason = ignoreReason(isIgnored)
         const abortListener = () => {
             quickPick?.hide()
         }
@@ -469,13 +419,6 @@ function interactDefault({
             config.configuration,
             vscode.workspace.getConfiguration()
         )
-        const createFeatureEnumChoice = featureCodySuggestionEnumBuilder(
-            vscode.workspace.getConfiguration()
-        )
-
-        const currentSuggestionMode = await getCurrentCodySuggestionMode(
-            vscode.workspace.getConfiguration()
-        )
 
         quickPick.items = [
             // These description should stay in sync with the settings in package.json
@@ -491,57 +434,57 @@ function interactDefault({
                   ]
                 : []),
             { label: 'notice', kind: vscode.QuickPickItemKind.Separator },
-            ...(currentIgnoreReason
-                ? [
-                      {
-                          label: '$(debug-pause) Cody is disabled in this file',
-                          description: '',
-                          detail: QUICK_PICK_ITEM_EMPTY_INDENT_PREFIX + currentIgnoreReason,
-                      },
-                  ]
-                : []),
+            // ...(currentIgnoreReason
+            //     ? [
+            //           {
+            //               label: '$(debug-pause) Driver is disabled in this file',
+            //               description: '',
+            //               detail: QUICK_PICK_ITEM_EMPTY_INDENT_PREFIX + currentIgnoreReason,
+            //           },
+            //       ]
+            //     : []),
             await createFeatureToggle(
                 'Code Actions',
                 undefined,
-                'Enable Cody fix and explain options in the Quick Fix menu',
-                'cody.codeActions.enabled',
+                'Enable Driver fix and explain options in the Quick Fix menu',
+                'driver-ai.codeActions.enabled',
                 c => c.codeActions
             ),
-            await createFeatureToggle(
-                'Code Lenses',
-                undefined,
-                'Enable Code Lenses in documents for quick access to Cody commands',
-                'cody.commandCodeLenses',
-                c => c.commandCodeLenses
-            ),
-            await createFeatureToggle(
-                'Command Hints',
-                undefined,
-                'Enable hints for Cody commands such as "Opt+K to Edit" or "Opt+D to Document"',
-                'cody.commandHints.enabled',
-                async () => {
-                    const enablement = await getGhostHintEnablement()
-                    return enablement.Document || enablement.EditOrChat || enablement.Generate
-                }
-            ),
-            { label: currentSuggestionMode, kind: vscode.QuickPickItemKind.Separator },
-            await createFeatureEnumChoice(
-                'Code Suggestion Settings',
-                autoeditsFeatureFlagEnabled,
-                userProductSubscription,
-                authStatus
-            ),
+            // await createFeatureToggle(
+            //     'Code Lenses',
+            //     undefined,
+            //     'Enable Code Lenses in documents for quick access to Driver commands',
+            //     'driver-ai.commandCodeLenses',
+            //     c => c.commandCodeLenses
+            // ),
+            // await createFeatureToggle(
+            //     'Command Hints',
+            //     undefined,
+            //     'Enable hints for Driver commands such as "Opt+K to Edit" or "Opt+D to Document"',
+            //     'driver-ai.commandHints.enabled',
+            //     async () => {
+            //         const enablement = await getGhostHintEnablement()
+            //         return enablement.Document || enablement.EditOrChat || enablement.Generate
+            //     }
+            // ),
+            // { label: currentSuggestionMode, kind: vscode.QuickPickItemKind.Separator },
+            // await createFeatureEnumChoice(
+            //     'Code Suggestion Settings',
+            //     autoeditsFeatureFlagEnabled,
+            //     userProductSubscription,
+            //     authStatus
+            // ),
             { label: 'settings', kind: vscode.QuickPickItemKind.Separator },
             {
-                label: '$(gear) Cody Extension Settings',
+                label: '$(gear) Driver Extension Settings',
                 async onSelect(): Promise<void> {
-                    await vscode.commands.executeCommand('cody.settings.extension')
+                    await vscode.commands.executeCommand('driver-ai.settings.extension')
                 },
             },
             {
                 label: '$(symbol-namespace) Custom Commands Settings',
                 async onSelect(): Promise<void> {
-                    await vscode.commands.executeCommand('cody.menu.commands-settings')
+                    await vscode.commands.executeCommand('driver-ai.menu.commands-settings')
                 },
             },
             {
@@ -549,25 +492,25 @@ function interactDefault({
                 async onSelect(): Promise<void> {
                     await vscode.commands.executeCommand(
                         'workbench.action.openGlobalKeybindings',
-                        '@ext:sourcegraph.cody-ai'
+                        '@ext:driver-ai.driver-chat'
                     )
                 },
             },
-            { label: 'feedback & support', kind: vscode.QuickPickItemKind.Separator },
-            ...SupportOptionItems,
-            ...FeedbackOptionItems,
+            // { label: 'feedback & support', kind: vscode.QuickPickItemKind.Separator },
+            // ...SupportOptionItems,
+            // ...FeedbackOptionItems,
             { label: `v${version}`, kind: vscode.QuickPickItemKind.Separator },
-            {
-                label: '$(cody-logo) Cody Release Blog',
-                async onSelect(): Promise<void> {
-                    await vscode.commands.executeCommand(
-                        'vscode.open',
-                        getReleaseNotesURLByIDE(version, CodyIDE.VSCode)
-                    )
-                },
-            },
+            // {
+            //     label: '$(cody-logo) Driver Release Blog',
+            //     async onSelect(): Promise<void> {
+            //         await vscode.commands.executeCommand(
+            //             'vscode.open',
+            //             getReleaseNotesURLByIDE(version, DriverIDE.VSCode)
+            //         )
+            //     },
+            // },
         ].filter(Boolean)
-        quickPick.title = 'Cody Settings'
+        quickPick.title = 'Driver Settings'
         quickPick.placeholder = 'Choose an option'
         quickPick.matchOnDescription = true
         quickPick.show()
@@ -596,100 +539,6 @@ function interactDefault({
             item?.onClick?.()
             quickPick.hide()
         })
-    }
-}
-
-function featureCodySuggestionEnumBuilder(workspaceConfig: vscode.WorkspaceConfiguration) {
-    return async (
-        name: string,
-        autoeditsFeatureFlagEnabled: boolean,
-        userProductSubscription: UserProductSubscription | null,
-        authStatus: AuthStatus
-    ): Promise<StatusBarItem> => {
-        const currentSuggestionMode = await getCurrentCodySuggestionMode(workspaceConfig)
-        const { isUserEligible } = isUserEligibleForAutoeditsFeature(
-            autoeditsFeatureFlagEnabled,
-            authStatus,
-            userProductSubscription
-        )
-
-        // Build the set of modes to display
-        const suggestionModes = [
-            {
-                label: CodyStatusBarSuggestionModeLabels.Autocomplete,
-                detail: 'Show code completions for the rest of the line or block',
-                value: CodyAutoSuggestionMode.Autocomplete,
-            },
-            ...(isUserEligible
-                ? [
-                      {
-                          label: CodyStatusBarSuggestionModeLabels.AutoEdit,
-                          detail: 'Show suggested code changes around the cursor based on file changes',
-                          value: CodyAutoSuggestionMode.Autoedit,
-                      },
-                  ]
-                : []),
-            {
-                label: CodyStatusBarSuggestionModeLabels.Disabled,
-                detail: 'No code suggestions',
-                value: CodyAutoSuggestionMode.Off,
-            },
-        ]
-
-        // Sort the modes so that the current mode is first
-        suggestionModes.sort((a, b) =>
-            a.value === currentSuggestionMode ? -1 : b.value === currentSuggestionMode ? 1 : 0
-        )
-
-        const autocompleteSettings = [
-            { label: 'autocomplete settings', kind: vscode.QuickPickItemKind.Separator },
-            {
-                label: '$(gear) Open Autocomplete Settings',
-            },
-        ]
-
-        return {
-            label: `$(code) ${name}`,
-            async onSelect() {
-                const quickPick = vscode.window.createQuickPick()
-                quickPick.title = 'Code Suggestion Settings'
-                quickPick.placeholder = 'Choose an option'
-                quickPick.items = [
-                    { label: 'current mode', kind: vscode.QuickPickItemKind.Separator },
-                    ...suggestionModes.map(mode => ({
-                        label: mode.label,
-                        detail: mode.detail,
-                    })),
-                    ...(currentSuggestionMode === CodyAutoSuggestionMode.Autocomplete
-                        ? autocompleteSettings
-                        : []),
-                ]
-
-                quickPick.onDidAccept(async () => {
-                    const selected = quickPick.selectedItems[0]
-                    if (!selected) {
-                        quickPick.hide()
-                        return
-                    }
-                    const chosenMode = suggestionModes.find(mode => mode.label === selected.label)
-                    if (chosenMode) {
-                        await workspaceConfig.update(
-                            getCodySuggestionModeKey(),
-                            chosenMode.value,
-                            vscode.ConfigurationTarget.Global
-                        )
-                        vscode.window.showInformationMessage(`${name} is set to “${chosenMode.label}”.`)
-                    } else if (selected.label.includes('Open Autocomplete Settings')) {
-                        await vscode.commands.executeCommand(
-                            'workbench.action.openSettings',
-                            '@ext:sourcegraph.cody-ai cody.autocomplete'
-                        )
-                    }
-                    quickPick.hide()
-                })
-                quickPick.show()
-            },
-        }
     }
 }
 
@@ -730,19 +579,6 @@ function featureToggleBuilder(
     }
 }
 
-async function getCurrentCodySuggestionMode(
-    workspaceConfig: vscode.WorkspaceConfiguration
-): Promise<string> {
-    const suggestionModeKey = getCodySuggestionModeKey()
-    const currentSuggestionMode =
-        (await workspaceConfig.get<string>(suggestionModeKey)) ?? CodyAutoSuggestionMode.Autocomplete
-    return currentSuggestionMode
-}
-
-function getCodySuggestionModeKey(): string {
-    return 'cody.suggestions.mode'
-}
-
 interface StatusBarLoaderArgs {
     title: string
     // The number of milliseconds to wait
@@ -779,11 +615,11 @@ interface StatusBarLoader {
     kind: 'startup' | 'feature'
 }
 
-enum CodyStatusBarSuggestionModeLabels {
-    Autocomplete = 'Autocomplete',
-    AutoEdit = 'Auto-edit',
-    Disabled = 'Disabled',
-}
+// enum CodyStatusBarSuggestionModeLabels {
+//     Autocomplete = 'Autocomplete',
+//     AutoEdit = 'Auto-edit',
+//     Disabled = 'Disabled',
+// }
 
 type StatusBarErrorType = 'auth' | 'RateLimitError' | 'AutoCompleteDisabledByAdmin' | 'Networking'
 

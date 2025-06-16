@@ -10,7 +10,7 @@ const badgeVariants = cva(
                 secondary: 'tw-bg-badge-background tw-text-badge-foreground',
                 outline: 'tw-border tw-border-muted-transparent tw-bg-[unset] tw-text-muted-foreground',
                 ghost: 'tw-bg-muted-transparent tw-text-muted-foreground',
-                cody: 'tw-bg-gradient-to-r tw-from-sourcegraph-blue tw-via-sourcegraph-purple tw-to-sourcegraph-orange tw-text-badge-foreground',
+                driver: 'tw-bg-gradient-to-r tw-from-driver-blue tw-via-driver-purple tw-to-driver-orange tw-text-badge-foreground',
                 warning: 'tw-bg-yellow-900 tw-text-yellow-300',
                 success: 'tw-bg-green-900 tw-text-green-300',
                 info: 'tw-bg-blue-900 tw-text-blue-300',

@@ -1,6 +1,5 @@
-import type { ContextItem, Model, RankedContext } from '@sourcegraph/cody-shared'
+import type { ContextItem, RankedContext } from '@sourcegraph/cody-shared'
 import { pluralize } from '@sourcegraph/cody-shared'
-import { DeepCodyAgentID } from '@sourcegraph/cody-shared/src/models/client'
 import { MENTION_CLASS_NAME } from '@sourcegraph/prompt-editor'
 import { clsx } from 'clsx'
 import { BrainIcon, MessagesSquareIcon } from 'lucide-react'
@@ -13,8 +12,6 @@ import {
     AccordionTrigger,
 } from '../../../components/shadcn/ui/accordion'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../components/shadcn/ui/tooltip'
-import { useTelemetryRecorder } from '../../../utils/telemetry'
-import { useConfig } from '../../../utils/useConfig'
 import { Cell } from '../Cell'
 import styles from './ContextCell.module.css'
 
@@ -32,53 +29,23 @@ export const ContextCell: FunctionComponent<{
 
     isForFirstMessage: boolean
 
-    model?: Model['id']
     className?: string
 
     defaultOpen?: boolean
-    agent?: string
 }> = memo(
     ({
         contextItems,
-        contextAlternatives,
 
-        model,
         isForFirstMessage,
         className,
         defaultOpen,
         isContextLoading,
-        agent,
     }) => {
         const __storybook__initialOpen = useContext(__ContextCellStorybookContext)?.initialOpen ?? false
 
-        const [selectedAlternative, setSelectedAlternative] = useState<number | undefined>(undefined)
-        const incrementSelectedAlternative = useCallback(
-            (increment: number): void => {
-                if (!contextAlternatives) {
-                    return
-                }
-                const basis = contextAlternatives.length + 1
-                const idx = selectedAlternative === undefined ? 0 : selectedAlternative + 1
-                const newIdx = (idx + increment + basis) % basis
-                setSelectedAlternative(newIdx - 1 < 0 ? undefined : newIdx - 1)
-            },
-            [contextAlternatives, selectedAlternative]
-        )
-        const nextSelectedAlternative = useCallback(
-            () => incrementSelectedAlternative(1),
-            [incrementSelectedAlternative]
-        )
-        const prevSelectedAlternative = useCallback(
-            () => incrementSelectedAlternative(-1),
-            [incrementSelectedAlternative]
-        )
+        const contextItemsToDisplay = contextItems
 
-        let contextItemsToDisplay = contextItems
-        if (selectedAlternative !== undefined && contextAlternatives) {
-            contextItemsToDisplay = contextAlternatives[selectedAlternative].items
-        }
-
-        const { usedContext, excludedContext, itemCountLabel, excludedContextInfo } = getContextInfo(
+        const { itemCountLabel, excludedContextInfo } = getContextInfo(
             contextItemsToDisplay,
             isForFirstMessage
         )
@@ -89,26 +56,11 @@ export const ContextCell: FunctionComponent<{
 
         const triggerAccordion = useCallback(() => {
             setAccordionValue(prev => {
-                if (!prev) {
-                    telemetryRecorder.recordEvent('cody.contextCell', 'opened', {
-                        metadata: {
-                            fileCount: new Set(usedContext.map(file => file.uri.toString())).size,
-                            excludedAtContext: excludedContext.length,
-                        },
-                    })
-                }
-
                 return prev ? '' : 'item-1'
             })
-        }, [excludedContext.length, usedContext])
+        }, [])
 
-        const {
-            config: { internalDebugContext },
-        } = useConfig()
-
-        const telemetryRecorder = useTelemetryRecorder()
-
-        const isAgenticChat = model?.includes(DeepCodyAgentID) || agent === DeepCodyAgentID
+        const isAgenticChat = true
 
         // Text for top header text
         const headerText: { main: string; sub?: string } = {
@@ -166,24 +118,6 @@ export const ContextCell: FunctionComponent<{
                         >
                             <>
                                 <AccordionContent className="tw-flex tw-flex-col" overflow={false}>
-                                    {internalDebugContext && contextAlternatives && (
-                                        <div>
-                                            <button onClick={prevSelectedAlternative} type="button">
-                                                ←
-                                            </button>
-                                            <button onClick={nextSelectedAlternative} type="button">
-                                                →
-                                            </button>{' '}
-                                            Ranking mechanism:{' '}
-                                            {selectedAlternative === undefined
-                                                ? 'actual'
-                                                : `${
-                                                      contextAlternatives[selectedAlternative].strategy
-                                                  }: (${(selectedAlternative ?? -1) + 1} of ${
-                                                      contextAlternatives.length
-                                                  })`}
-                                        </div>
-                                    )}
                                     <ul className="tw-list-none tw-flex tw-flex-col tw-gap-2 tw-pt-4">
                                         {contextItemsToDisplay?.map((item, i) => (
                                             <li
@@ -213,13 +147,6 @@ export const ContextCell: FunctionComponent<{
                                                         MENTION_CLASS_NAME
                                                     )}
                                                 />
-                                                {internalDebugContext &&
-                                                    item.metadata &&
-                                                    item.metadata.length > 0 && (
-                                                        <span className={styles.contextItemMetadata}>
-                                                            {item.metadata.join(', ')}
-                                                        </span>
-                                                    )}
                                             </li>
                                         ))}
 
@@ -275,6 +202,9 @@ export const ContextCell: FunctionComponent<{
         )
     }
 )
+
+ContextCell.displayName = 'ContextCell'
+
 const getContextInfo = (items?: ContextItem[], isFirst?: boolean) => {
     const { usedContext, excludedContext, count } = (items ?? []).reduce(
         (acc, item) => {
@@ -305,11 +235,10 @@ const getContextInfo = (items?: ContextItem[], isFirst?: boolean) => {
 }
 
 const TEMPLATES = {
-    filter: 'filtered out by Cody Context Filters. Please contact your site admin for details.',
+    filter: 'filtered out by Driver Context Filters. Please contact your site admin for details.',
     token: {
-        singular:
-            'was retrieved but not used because it exceeds the token limit. Learn more about token limits ',
-        plural: 'were retrieved but not used because they exceed the token limit. Learn more about token limits ',
+        singular: 'was retrieved but not used because it exceeds the token limit.',
+        plural: 'were retrieved but not used because they exceed the token limit.',
     },
 } as const
 
@@ -327,14 +256,6 @@ function generateExcludedInfo(token: number, filter: number): string[] {
 const ExcludedContextWarning: React.FC<{ message: string }> = ({ message }) => (
     <div className="tw-flex tw-gap-2 tw-my-2 tw-items-center">
         <i className="codicon codicon-warning" />
-        <span>
-            {message}
-            {(message.includes(TEMPLATES.token.singular) ||
-                message.includes(TEMPLATES.token.plural)) && (
-                <span>
-                    <a href="https://sourcegraph.com/docs/cody/core-concepts/token-limits">here</a>.
-                </span>
-            )}
-        </span>
+        <span>{message}</span>
     </div>
 )

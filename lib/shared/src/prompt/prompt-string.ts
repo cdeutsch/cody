@@ -19,7 +19,6 @@ import { displayPath, displayPathWithLines } from '../editor/displayPath'
 import { getEditorInsertSpaces, getEditorTabSize } from '../editor/utils'
 import { logDebug } from '../logger'
 import { type Rule, ruleTitle } from '../rules/rules'
-import { telemetryRecorder } from '../telemetry-v2/singleton'
 
 // This module is designed to encourage, and to some degree enforce, safe
 // handling of file content that gets constructed into prompts. It works this
@@ -64,7 +63,7 @@ export class PromptString {
      * Returns a string that is safe to use in a prompt that is sent to an LLM.
      */
     public async toFilteredString(
-        contextFilter: Pick<ContextFiltersProvider, 'isUriIgnored' | 'toDebugObject'>
+        contextFilter: Pick<ContextFiltersProvider, 'isUriIgnored'>
     ): Promise<string> {
         const references = internal_toReferences(this)
         const checks = references.map(
@@ -79,21 +78,14 @@ export class PromptString {
                 logDebug(
                     'PromptString',
                     'toFilteredString',
-                    `${reference} is ignored by the current context filters. Reason: ${reason}`,
-                    { verbose: contextFilter.toDebugObject() }
+                    `${reference} is ignored by the current context filters. Reason: ${reason}`
                 )
-                telemetryRecorder.recordEvent('contextFilters.promptString', 'illegalReference', {
-                    privateMetadata: {
-                        scheme: reference.scheme,
-                        reason,
-                    },
-                })
             }
         }
 
         if (shouldThrow) {
             throw new Error(
-                'The prompt contains a reference to a file that is not allowed by your current Cody policy.'
+                'The prompt contains a reference to a file that is not allowed by your current Driver policy.'
             )
         }
 

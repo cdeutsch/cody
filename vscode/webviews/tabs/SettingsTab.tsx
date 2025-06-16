@@ -12,11 +12,11 @@ export const SettingsTab: React.FC = () => {
                 onClick={() =>
                     getVSCodeAPI().postMessage({
                         command: 'command',
-                        id: 'cody.status-bar.interacted',
+                        id: 'driver-ai.status-bar.interacted',
                     })
                 }
             >
-                Cody Settings
+                Driver Settings
             </Button>
         </div>
     )

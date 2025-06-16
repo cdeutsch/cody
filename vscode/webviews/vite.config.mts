@@ -26,7 +26,7 @@ export default defineProjectWithDefaults(__dirname, {
             },
             input: {
                 index: resolve(__dirname, 'index.html'),
-                autoeditDebug: resolve(__dirname, 'autoedit-debug.html'),
+                // autoeditDebug: resolve(__dirname, 'autoedit-debug.html'),
             },
             output: {
                 entryFileNames: '[name].js',

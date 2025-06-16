@@ -1,7 +1,5 @@
 import {
-    CodyIDE,
-    MockServerTelemetryRecorderProvider,
-    TelemetryRecorderProvider,
+    DriverIDE,
     mockClientCapabilities,
     nextTick,
     setAuthStatusObservable,
@@ -30,26 +28,26 @@ async function main() {
             await nextTick()
             mockClientCapabilities(
                 clientCapabilities ?? {
-                    agentIDE: CodyIDE.VSCode,
+                    agentIDE: DriverIDE.VSCode,
                     isVSCode: true,
-                    isCodyWeb: false,
+                    isDriverWeb: false,
                     agentExtensionVersion: version,
                     // Unused by TelemetryRecorderProvider
                     agentIDEVersion: '',
-                    telemetryClientName: `${CodyIDE.VSCode}.Cody`,
+                    // telemetryClientName: `${DriverIDE.VSCode}.Cody`,
                 }
             )
 
-            const provider = process.env.CODY_TESTING
-                ? new MockServerTelemetryRecorderProvider(config)
-                : new TelemetryRecorderProvider(config)
-            const recorder = provider.getRecorder()
-            recorder.recordEvent('cody.extension', 'uninstalled', {
-                billingMetadata: {
-                    product: 'cody',
-                    category: 'billable',
-                },
-            })
+            // const provider = process.env.CODY_TESTING
+            //     ? new MockServerTelemetryRecorderProvider(config)
+            //     : new TelemetryRecorderProvider(config)
+            // const recorder = provider.getRecorder()
+            // recorder.recordEvent('cody.extension', 'uninstalled', {
+            //     billingMetadata: {
+            //         product: 'cody',
+            //         category: 'billable',
+            //     },
+            // })
 
             // cleanup the uninstaller config
             await deleteUninstallerConfig()

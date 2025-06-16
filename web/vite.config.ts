@@ -7,19 +7,19 @@ import svgr from 'vite-plugin-svgr'
 import { defineProjectWithDefaults } from '../.config/viteShared'
 
 const fakeProcessEnv: Record<string, string | boolean> = {
-    CODY_SHIM_TESTING: false,
-    CODY_TESTING: false,
-    CODY_PROFILE_TEMP: false,
-    CODY_TELEMETRY_EXPORTER: 'graphql',
+    DRIVER_SHIM_TESTING: false,
+    DRIVER_TESTING: false,
+    DRIVER_PROFILE_TEMP: false,
+    DRIVER_TELEMETRY_EXPORTER: 'graphql',
     NODE_ENV: 'production',
     NODE_DEBUG: false,
-    CODY_OVERRIDE_DOTCOM_URL: 'https://sourcegraph.com',
-    CODY_WEB_DONT_SET_SOME_HEADERS: true,
+    DRIVER_OVERRIDE_DOTCOM_URL: 'https://www.driver.ai',
+    DRIVER_WEB_DONT_SET_SOME_HEADERS: true,
     LSP_LIGHT_LOGGING_ENABLED: false,
     LSP_LIGHT_CACHE_DISABLED: false,
     language: 'en-US',
-    CODY_WEB_DEMO: true,
-    CODY_WEB_DEMO_STANDALONE_MODE: process.env.CODY_WEB_DEMO_STANDALONE_MODE,
+    DRIVER_WEB_DEMO: true,
+    DRIVER_WEB_DEMO_STANDALONE_MODE: process.env.DRIVER_WEB_DEMO_STANDALONE_MODE ?? 'false',
 }
 
 export default defineProjectWithDefaults(__dirname, {
@@ -79,7 +79,7 @@ export default defineProjectWithDefaults(__dirname, {
             },
 
             {
-                find: /^cody-ai\/(.*)$/,
+                find: /^driver-ai\/(.*)$/,
                 replacement: resolve(__dirname, '../vscode/$1'),
             },
         ],

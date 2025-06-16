@@ -8,8 +8,6 @@ import {
     PromptString,
     REMOTE_DIRECTORY_PROVIDER_URI,
     REMOTE_REPOSITORY_PROVIDER_URI,
-    contextFiltersProvider,
-    currentAuthStatusAuthed,
     displayPath,
     editorStateFromPromptString,
     firstValueFrom,
@@ -25,16 +23,16 @@ import { createRepositoryMention } from '../context/openctx/common/get-repositor
 import { remoteReposForAllWorkspaceFolders } from '../repository/remoteRepos'
 import { getCurrentRepositoryInfo } from './utils'
 
-export const PROMPT_CURRENT_FILE_PLACEHOLDER: string = 'cody://current-file'
-export const PROMPT_CURRENT_SELECTION_PLACEHOLDER: string = 'cody://selection'
-const PROMPT_CURRENT_SELECTION_OLD_PLACEHOLDER: string = 'cody://current-selection'
-export const PROMPT_CURRENT_DIRECTORY_PLACEHOLDER: string = 'cody://current-dir'
-export const PROMPT_EDITOR_OPEN_TABS_PLACEHOLDER: string = 'cody://tabs'
-const PROMPT_CURRENT_REPOSITORY_PLACEHOLDER: string = 'cody://repository'
+export const PROMPT_CURRENT_FILE_PLACEHOLDER: string = 'driver://current-file'
+export const PROMPT_CURRENT_SELECTION_PLACEHOLDER: string = 'driver://selection'
+const PROMPT_CURRENT_SELECTION_OLD_PLACEHOLDER: string = 'driver://current-selection'
+export const PROMPT_CURRENT_DIRECTORY_PLACEHOLDER: string = 'driver://current-dir'
+export const PROMPT_EDITOR_OPEN_TABS_PLACEHOLDER: string = 'driver://tabs'
+const PROMPT_CURRENT_REPOSITORY_PLACEHOLDER: string = 'driver://repository'
 
 /**
  * Default IDE logic itself can figure out all needed context via vscode API,
- * for Cody Web where we don't hava access to this API (or way to override this)
+ * for Driver Web where we don't have access to this API (or way to override this)
  * we pass static initial context from the main thread (current repo, file, dir, etc.)
  */
 export type PromptHydrationInitialContext = ContextItem[]
@@ -63,10 +61,10 @@ export async function hydratePromptText(
 ): Promise<SerializedPromptEditorState> {
     const promptText = PromptString.unsafe_fromUserQuery(promptRawText)
 
-    // Match any general cody mentions in the prompt text with cody:// prefix
+    // Match any general driver mentions in the prompt text with driver:// prefix
     // This should be the same as AT_MENTION_REGEX in the atMentionsSerializer.ts
     const promptTextMentionMatches =
-        promptText.toString().match(/(cody:\/\/(?:serialized[^_]+_|[a-zA-Z0-9-]+))/gm) ?? []
+        promptText.toString().match(/(driver:\/\/(?:serialized[^_]+_|[a-zA-Z0-9-]+))/gm) ?? []
 
     let hydratedPromptText = promptText
     const contextItemsMap = new Map<string, ContextItem>()
@@ -95,7 +93,7 @@ async function hydrateWithCurrentFile(
     promptText: PromptString,
     initialContext: PromptHydrationInitialContext
 ): Promise<[PromptString, ContextItem[]]> {
-    // Check if initial context already contains current file (Cody Web case)
+    // Check if initial context already contains current file (Driver Web case)
     const initialContextFile = initialContext.find(item => item.type === 'file')
     const currentFileContextItem = initialContextFile ?? (await getFileContext())
 
@@ -117,7 +115,7 @@ async function hydrateWithCurrentSelection(
     promptText: PromptString,
     initialContext: PromptHydrationInitialContext
 ): Promise<[PromptString, ContextItem[]]> {
-    // Check if initial context already contains current file with selection (Cody Web case)
+    // Check if initial context already contains current file with selection (Driver Web case)
     const initialContextFile = initialContext.find(item => item.type === 'file')
 
     const currentSelection = initialContextFile?.range
@@ -142,7 +140,7 @@ async function hydrateWithCurrentSelectionLegacy(
     promptText: PromptString,
     initialContext: PromptHydrationInitialContext
 ): Promise<[PromptString, ContextItem[]]> {
-    // Check if initial context already contains current file with selection (Cody Web case)
+    // Check if initial context already contains current file with selection (Driver Web case)
     const initialContextFile = initialContext.find(item => item.type === 'file' && item.range)
 
     const currentSelection = initialContextFile ?? (await getSelectionOrFileContext())[0]
@@ -261,7 +259,6 @@ async function hydrateWithCurrentWorkspace(
         ]
     }
 
-    const authStatus = currentAuthStatusAuthed()
     const workspaceFolders = await firstValueFrom(remoteReposForAllWorkspaceFolders)
 
     const items = []
@@ -275,9 +272,9 @@ async function hydrateWithCurrentWorkspace(
     }
 
     for (const repo of workspaceFolders) {
-        if (await contextFiltersProvider.isRepoNameIgnored(repo.name)) {
-            continue
-        }
+        // if (await contextFiltersProvider.isRepoNameIgnored(repo.name)) {
+        //   continue;
+        // }
         if (repo.id === undefined) {
             continue
         }
@@ -290,8 +287,7 @@ async function hydrateWithCurrentWorkspace(
                         name: repo.name,
                         url: repo.name,
                     },
-                    REMOTE_REPOSITORY_PROVIDER_URI,
-                    authStatus
+                    REMOTE_REPOSITORY_PROVIDER_URI
                 )
             ),
             description: repo.name,

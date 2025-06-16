@@ -2,24 +2,15 @@ import type * as vscode from 'vscode'
 
 import type {
     ClientCapabilities,
-    CodyCommand,
-    ContextFilters,
-    CurrentUserCodySubscription,
     Model,
     ModelAvailabilityStatus,
     ModelUsage,
-    Rule,
     SerializedChatTranscript,
 } from '@sourcegraph/cody-shared'
 import type { TelemetryEventMarketingTrackingInput } from '@sourcegraph/telemetry'
 
 import type { AuthError } from '@sourcegraph/cody-shared/src/sourcegraph-api/errors'
-import type { AutoeditRequestStateForAgentTesting } from '../autoedits/analytics-logger'
-import type { DecorationInfo } from '../autoedits/renderer/decorators/base'
 import type { ExtensionMessage, WebviewMessage } from '../chat/protocol'
-import type { CompletionBookkeepingEvent, CompletionItemID } from '../completions/analytics-logger'
-import type { FixupTaskID } from '../non-stop/FixupTask'
-import type { CodyTaskState } from '../non-stop/state'
 
 // This file documents the Cody Agent JSON-RPC protocol. Consult the JSON-RPC
 // specification to learn about how JSON-RPC works https://www.jsonrpc.org/specification
@@ -86,49 +77,6 @@ export type ClientRequests = {
     'commands/explain': [null, string] // TODO: rename to chatCommands/{explain,test,smell}
     'commands/smell': [null, string]
 
-    // Trigger custom commands that could be a chat-based command or an edit command.
-    'commands/custom': [{ key: string }, CustomCommandResult]
-
-    // A list of available custom commands stored in .cody/commands.json.
-    'customCommands/list': [null, CodyCommand[]]
-
-    // Trigger commands that edit the code.
-    'editCommands/code': [
-        {
-            instruction: string
-            model?: string | undefined | null
-            mode?: 'edit' | 'insert' | undefined | null
-            range?: Range | undefined | null
-        },
-        EditTask,
-    ]
-    'editCommands/test': [null, EditTask]
-    'editCommands/document': [null, EditTask]
-
-    // If the task is "applied", discards the task.
-    'editTask/accept': [{ id: FixupTaskID }, null]
-    // If the task is "applied", attempts to revert the task's edit, then
-    // discards the task.
-    'editTask/undo': [{ id: FixupTaskID }, null]
-    // Discards the task. Applicable to tasks in any state.
-    'editTask/cancel': [{ id: FixupTaskID }, null]
-    'editTask/retry': [
-        {
-            id: FixupTaskID
-            instruction: string
-            model: string
-            mode: 'edit' | 'insert'
-            range: Range
-            rules?: Rule[] | undefined | null
-        },
-        EditTask,
-    ]
-    'editTask/getTaskDetails': [{ id: FixupTaskID }, EditTask]
-
-    // Utility for clients that don't have language-neutral folding-range support.
-    // Provides a list of all the computed folding ranges in the specified document.
-    'editTask/getFoldingRanges': [GetFoldingRangeParams, GetFoldingRangeResult]
-
     // Low-level API to trigger a VS Code command with any argument list. Avoid
     // using this API in favor of high-level wrappers like 'chat/new'.
     'command/execute': [ExecuteCommandParams, any]
@@ -144,11 +92,6 @@ export type ClientRequests = {
         { location: ProtocolLocation; triggerKind: CodeActionTriggerKind },
         { codeActions: ProtocolCodeAction[] },
     ]
-    // The ID parameter should match ProtocolCodeAction.id from
-    // codeActions/provide.
-    'codeActions/trigger': [{ id: string }, EditTask]
-
-    'autocomplete/execute': [AutocompleteParams, AutocompleteResult]
 
     'graphql/getRepoIds': [{ names: string[]; first: number }, { repos: { name: string; id: string }[] }]
 
@@ -158,7 +101,6 @@ export type ClientRequests = {
 
     'featureFlags/getFeatureFlag': [{ flagName: string }, boolean | null]
 
-    'graphql/getCurrentUserCodySubscription': [null, CurrentUserCodySubscription | null]
     /**
      * Record telemetry events.
      */
@@ -190,55 +132,6 @@ export type ClientRequests = {
     // diagnostics for the provided document URIs. This request should be used
     // alongside the `codeActions/provide` request.
     'diagnostics/publish': [{ diagnostics: ProtocolDiagnostic[] }, null]
-
-    // Only used for testing purposes. If you want to write an integration test
-    // for dealing with progress bars then you can send a request to this
-    // endpoint to emulate the scenario where the server creates a progress bar.
-    'testing/progress': [{ title: string }, { result: string }]
-    'testing/exportedTelemetryEvents': [null, { events: TestingTelemetryEvent[] }]
-    'testing/networkRequests': [null, { requests: NetworkRequest[] }]
-    'testing/requestErrors': [null, { errors: NetworkRequest[] }]
-    'testing/closestPostData': [{ url: string; postData: string }, { closestBody: string }]
-    'testing/memoryUsage': [null, { usage: MemoryUsage }]
-    'testing/heapdump': [null, null]
-    'testing/awaitPendingPromises': [null, null]
-    // Retrieve the Agent's copy of workspace documents, for testing/validation.
-    'testing/workspaceDocuments': [GetDocumentsParams, GetDocumentsResult]
-    // Returns diagnostics for the given URI. Lives under `testing/` instead of
-    // standalone `diagnostics/` because it only works for TypeScript files.
-    'testing/diagnostics': [{ uri: string }, { diagnostics: ProtocolDiagnostic[] }]
-
-    // Only used for testing purposes. This operation runs indefinitely unless
-    // the client sends progress/cancel.
-    'testing/progressCancelation': [{ title: string }, { result: string }]
-
-    // Only used for testing purposes. Does a best-effort to reset the state
-    // if the agent server. For example, closes all open documents.
-    'testing/reset': [null, null]
-
-    'testing/autocomplete/completionEvent': [
-        CompletionItemParams,
-        CompletionBookkeepingEvent | undefined | null,
-    ]
-
-    'testing/autocomplete/autoeditEvent': [
-        CompletionItemParams,
-        AutoeditRequestStateForAgentTesting | undefined | null,
-    ]
-
-    // For testing a short delay we give users for reading the completion
-    // and deciding whether to accept it.
-    'testing/autocomplete/awaitPendingVisibilityTimeout': [null, CompletionItemID | undefined]
-
-    // For testing purposes, sets the minimum time given to users for reading and deciding
-    // whether to accept a completion.
-    'testing/autocomplete/setCompletionVisibilityDelay': [{ delay: number }, null]
-
-    // For testing purposes, returns the current autocomplete provider configuration.
-    'testing/autocomplete/providerConfig': [
-        null,
-        { id: string; legacyModel: string; configSource: string } | null | undefined,
-    ]
 
     // Updates the extension configuration and returns the new
     // authentication status, which indicates whether the provided credentials are
@@ -278,11 +171,6 @@ export type ClientRequests = {
             policy: 'ignore' | 'use'
         },
     ]
-
-    // For testing. Overrides any ignore policy to ignore repositories and URIs
-    // which match the specified regular expressions. Pass `undefined` to remove
-    // the override.
-    'testing/ignore/overridePolicy': [ContextFilters | null, null]
 
     // Called after the extension has been uninstalled by a user action.
     // Attempts to wipe out any state that the extension has stored.
@@ -417,17 +305,6 @@ export type ServerNotifications = {
 
     'extensionConfiguration/didUpdate': [{ key: string; value?: string | undefined | null }]
     'extensionConfiguration/openSettings': [null]
-
-    // Certain properties of the task are updated:
-    // - State
-    // - The associated range has changed because the document was edited
-    // Only sent if client capabilities fixupControls === 'events'
-    'editTask/didUpdate': [EditTask]
-    // The task is deleted because it has been accepted or cancelled.
-    // Only sent if client capabilities fixupControls === 'events'.
-    'editTask/didDelete': [EditTask]
-
-    'codeLenses/display': [DisplayCodeLensParams]
 
     // The set of ignored files/repositories has changed. The client should
     // re-query using ignore/test.
@@ -569,38 +446,6 @@ export interface AutoeditChanges {
     type: 'insert' | 'delete'
     range: vscode.Range
     text?: string | null | undefined
-}
-
-export type AutoeditTextDiff = DecorationInfo
-
-export interface AutocompleteEditItem {
-    id: string
-    range: Range
-    insertText: string
-    originalText: string
-    render: {
-        inline: {
-            changes?: AutoeditChanges[] | null | undefined
-        }
-        aside: {
-            image?: AutoeditImageDiff | null | undefined
-            diff?: AutoeditTextDiff | null | undefined
-        }
-    }
-}
-
-export interface AutocompleteItem {
-    id: string
-    range: Range
-    insertText: string
-}
-
-export interface AutocompleteResult {
-    /** @deprecated Use `inlineCompletionItems` instead. */
-    items: AutocompleteItem[]
-    inlineCompletionItems: AutocompleteItem[]
-    decoratedEditItems: AutocompleteEditItem[]
-    completionEvent?: CompletionBookkeepingEvent | undefined | null
 }
 
 export interface ClientInfo {
@@ -934,17 +779,6 @@ export interface DeleteTextEdit {
     metadata?: vscode.WorkspaceEditEntryMetadata | undefined | null
 }
 
-export interface EditTask {
-    id: string
-    state: CodyTaskState
-    error?: CodyError | undefined | null
-    selectionRange: Range
-    instruction?: string | undefined | null
-    model?: string | undefined | null
-    originalText?: string | undefined | null
-    rules?: Rule[] | undefined | null
-}
-
 export interface CodyError {
     message: string
     cause?: CodyError | undefined | null
@@ -1030,14 +864,10 @@ export interface RenameFilesParams {
     files: RenameFile[]
 }
 
-export type CustomCommandResult = CustomChatCommandResult | CustomEditCommandResult
+export type CustomCommandResult = CustomChatCommandResult
 export interface CustomChatCommandResult {
     type: 'chat'
     chatResult: string
-}
-export interface CustomEditCommandResult {
-    type: 'edit'
-    editResult: EditTask
 }
 
 export interface GetFoldingRangeParams {

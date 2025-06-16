@@ -1,7 +1,6 @@
 import {
     type ContextItem,
     TokenCounterUtils,
-    contextFiltersProvider,
     logError,
     toRangeData,
     wrapInActiveSpan,
@@ -32,9 +31,9 @@ export async function getContextFileFromCursor(
                 throw new Error('No active editor')
             }
 
-            if (await contextFiltersProvider.isUriIgnored(document.uri)) {
-                return null
-            }
+            // if (await contextFiltersProvider.isUriIgnored(document.uri)) {
+            //     return null
+            // }
 
             // Use user current selection if any
             // Else, use smart selection based on cursor position
@@ -120,5 +119,6 @@ export async function getFileContext(): Promise<ContextItem | null> {
 }
 
 async function shouldIgnore(uri: URI): Promise<boolean> {
-    return Boolean(await contextFiltersProvider.isUriIgnored(uri))
+    // return Boolean(await contextFiltersProvider.isUriIgnored(uri))
+    return false
 }

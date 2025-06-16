@@ -14,6 +14,6 @@ export function getChatPanelTitle(lastHumanText?: string, truncateTitle = true):
     return text.length > 25 ? `${text.slice(0, 25).trim()}...` : text
 }
 
-export const isAgentTesting = process.env.CODY_SHIM_TESTING === 'true'
-export const isCodyTesting =
-    process.env.CODY_TESTING === 'true' || process.env.CODY_SHIM_TESTING === 'true'
+export const isAgentTesting = process.env.DRIVER_SHIM_TESTING === 'true'
+export const isDriverTesting =
+    process.env.DRIVER_TESTING === 'true' || process.env.DRIVER_SHIM_TESTING === 'true'

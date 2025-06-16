@@ -1,5 +1,5 @@
-import { firstValueFrom, isError, pendingOperation } from '@sourcegraph/cody-shared'
-import { type RemoteRepo, remoteReposForAllWorkspaceFolders } from '../repository/remoteRepos'
+import { type RemoteRepo, firstValueFrom, isError, pendingOperation } from '@sourcegraph/cody-shared'
+import { remoteReposForAllWorkspaceFolders } from '../repository/remoteRepos'
 import type { PromptHydrationInitialContext } from './prompt-hydration'
 
 export async function getCurrentRepositoryInfo(
