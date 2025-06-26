@@ -38,7 +38,7 @@ async function main() {
                 }
             )
 
-            // const provider = process.env.CODY_TESTING
+            // const provider = process.env.DRIVER_TESTING
             //     ? new MockServerTelemetryRecorderProvider(config)
             //     : new TelemetryRecorderProvider(config)
             // const recorder = provider.getRecorder()

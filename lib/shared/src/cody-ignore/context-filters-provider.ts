@@ -96,7 +96,7 @@ export class ContextFiltersProvider implements vscode.Disposable {
     //     this.lastContextFiltersResponse = canonicalizeContextFilters(contextFilters)
 
     //     // Disable logging for unit tests. Retain for manual debugging of enterprise issues.
-    //     if (!cenv.CODY_TESTING_LOG_SUPRESS_VERBOSE) {
+    //     if (!cenv.DRIVER_TESTING_LOG_SUPRESS_VERBOSE) {
     //         logDebug('ContextFiltersProvider', 'setContextFilters', {
     //             verbose: contextFilters,
     //         })

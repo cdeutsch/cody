@@ -257,7 +257,7 @@ private constructor(
       processBuilder.environment()["CODY_RECORDING_NAME"] =
           System.getProperty("CODY_RECORDING_NAME")
 
-      processBuilder.environment()["CODY_TESTING"] = "true"
+      processBuilder.environment()["DRIVER_TESTING"] = "true"
 
       processBuilder.environment().apply {
         // N.B. If you set CODY_RECORDING_MODE, you must set CODY_RECORDING_DIRECTORY,

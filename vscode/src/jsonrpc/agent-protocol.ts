@@ -6,6 +6,7 @@ import type {
     ModelAvailabilityStatus,
     ModelUsage,
     SerializedChatTranscript,
+    User,
 } from '@sourcegraph/cody-shared'
 import type { TelemetryEventMarketingTrackingInput } from '@sourcegraph/telemetry'
 
@@ -571,21 +572,8 @@ export type ProtocolAuthStatus = ProtocolAuthenticatedAuthStatus | ProtocolUnaut
 export interface ProtocolAuthenticatedAuthStatus {
     status: 'authenticated'
     authenticated: boolean
-    endpoint: string
 
-    username: string
-
-    /**
-     * Used to enable Fireworks tracing for Sourcegraph teammates on DotCom.
-     * https://readme.fireworks.ai/docs/enabling-tracing
-     */
-    isFireworksTracingEnabled?: boolean | null | undefined
-    hasVerifiedEmail?: boolean | null | undefined
-    requiresVerifiedEmail?: boolean | null | undefined
-
-    primaryEmail?: string | null | undefined
-    displayName?: string | null | undefined
-    avatarURL?: string | null | undefined
+    user: User
 
     pendingValidation: boolean
 
@@ -598,7 +586,6 @@ export interface ProtocolAuthenticatedAuthStatus {
 export interface ProtocolUnauthenticatedAuthStatus {
     status: 'unauthenticated'
     authenticated: boolean
-    endpoint: string
     error?: AuthError | null | undefined
     pendingValidation: boolean
 }
