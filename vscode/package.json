@@ -507,6 +507,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.33.1",
+    "@chevrotain/regexp-to-ast": "^11.0.3",
     "@modelcontextprotocol/sdk": "^1.7.0",
     "@openctx/provider-linear-issues": "^0.0.9",
     "@openctx/vscode-lib": "^0.0.26",
@@ -607,7 +608,9 @@
     "uuid": "^9.0.0",
     "valibot": "1.0.0-beta.9",
     "vfile": "^6.0.3",
+    "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.8",
+    "vscode-languageserver-types": "^3.17.5",
     "vscode-uri": "^3.0.8",
     "wink-nlp-utils": "^2.1.0",
     "zod-to-json-schema": "^3.24.3"

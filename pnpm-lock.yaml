@@ -341,6 +341,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.33.1
         version: 0.33.1
+      '@chevrotain/regexp-to-ast':
+        specifier: ^11.0.3
+        version: 11.0.3
       '@modelcontextprotocol/sdk':
         specifier: ^1.7.0
         version: 1.7.0
@@ -641,9 +644,15 @@ importers:
       vfile:
         specifier: ^6.0.3
         version: 6.0.3
+      vscode-languageserver:
+        specifier: ^9.0.1
+        version: 9.0.1
       vscode-languageserver-textdocument:
         specifier: ^1.0.8
         version: 1.0.8
+      vscode-languageserver-types:
+        specifier: ^3.17.5
+        version: 3.17.5
       vscode-uri:
         specifier: ^3.0.8
         version: 3.0.8
