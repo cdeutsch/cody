@@ -481,12 +481,12 @@ function interactDefault({
                     await vscode.commands.executeCommand('driver-ai.settings.extension')
                 },
             },
-            {
-                label: '$(symbol-namespace) Custom Commands Settings',
-                async onSelect(): Promise<void> {
-                    await vscode.commands.executeCommand('driver-ai.menu.commands-settings')
-                },
-            },
+            // {
+            //     label: '$(symbol-namespace) Custom Commands Settings',
+            //     async onSelect(): Promise<void> {
+            //         await vscode.commands.executeCommand('driver-ai.menu.commands-settings')
+            //     },
+            // },
             {
                 label: '$(keyboard) Keyboard Shortcuts',
                 async onSelect(): Promise<void> {

@@ -416,13 +416,6 @@
           "when": "!driver-ai.activated",
           "group": "other"
         }
-      ],
-      "view/title": [
-        {
-          "command": "driver-ai.menu.commands",
-          "when": "view == driver-ai.chat && driver-ai.activated",
-          "group": "navigation@1"
-        }
       ]
     },
     "configuration": {
