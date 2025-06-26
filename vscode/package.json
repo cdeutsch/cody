@@ -131,7 +131,7 @@
   "contributes": {
     "colors": [
       {
-        "id": "driver-ai.fixup.conflictBackground",
+        "id": "driver.fixup.conflictBackground",
         "description": "The background of text Driver will edit where there is a specific conflict with your changes.",
         "defaults": {
           "light": "mergeEditor.conflictingLines.background",
@@ -139,7 +139,7 @@
         }
       },
       {
-        "id": "driver-ai.fixup.conflictBorder",
+        "id": "driver.fixup.conflictBorder",
         "description": "The border of text Driver will edit, if there is a conflict with your changes.",
         "defaults": {
           "light": "mergeEditor.conflict.unhandledFocused.border",
@@ -147,7 +147,7 @@
         }
       },
       {
-        "id": "driver-ai.fixup.conflictedBackground",
+        "id": "driver.fixup.conflictedBackground",
         "description": "The background of text Driver will edit, if there is a conflict with your changes.",
         "defaults": {
           "light": "#ffffff00",
@@ -155,7 +155,7 @@
         }
       },
       {
-        "id": "driver-ai.fixup.conflictedBorder",
+        "id": "driver.fixup.conflictedBorder",
         "description": "The border of text Driver will edit, if there is a conflict with your changes.",
         "defaults": {
           "light": "mergeEditor.conflict.unhandledUnfocused.border",
@@ -163,7 +163,7 @@
         }
       },
       {
-        "id": "driver-ai.fixup.incomingBackground",
+        "id": "driver.fixup.incomingBackground",
         "description": "The background of text Driver will edit.",
         "defaults": {
           "light": "merge.incomingContentBackground",
@@ -171,7 +171,7 @@
         }
       },
       {
-        "id": "driver-ai.fixup.incomingBorder",
+        "id": "driver.fixup.incomingBorder",
         "description": "The border around text Driver will edit.",
         "defaults": {
           "light": "#436EB1",
