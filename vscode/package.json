@@ -426,13 +426,13 @@
           "order": 1,
           "type": "string",
           "description": "URL to the Driver AI API instance.",
-          "default": "https://api.dev.driverai.com"
+          "default": "https://api.us1.driverai.com"
         },
         "driver-ai.appUrl": {
           "order": 2,
           "type": "string",
           "description": "URL to redirect to for authentication.",
-          "default": "https://app.dev.driverai.com"
+          "default": "https://app.driverai.com"
         },
         "driver-ai.chat.defaultLocation": {
           "order": 6,
