@@ -4,7 +4,7 @@ import { toJsxRuntime } from 'hast-util-to-jsx-runtime'
 import type { Components } from 'hast-util-to-jsx-runtime'
 import { urlAttributes } from 'html-url-attributes'
 import type { FunctionComponent } from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Fragment, jsx, jsxs } from 'react/jsx-runtime'
 import rehypeHighlight from 'rehype-highlight'
 import rehypeMermaid from 'rehype-mermaid'
@@ -264,6 +264,8 @@ export const MarkdownFromCody: FunctionComponent<{
 
     const [error, setError] = useState<Error | undefined>(undefined)
     const [tree, setTree] = useState<Root | undefined>(undefined)
+    const [displayError, setDisplayError] = useState<Error | undefined>(undefined)
+    const errorTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined)
 
     useEffect(() => {
         let cancelled = false
@@ -282,7 +284,61 @@ export const MarkdownFromCody: FunctionComponent<{
         }
     }, [chatReplyTransformed, processor])
 
-    if (error) throw error
+    // Handle delayed error display
+    useEffect(() => {
+        // Clear any existing timeout
+        if (errorTimeoutRef.current) {
+            clearTimeout(errorTimeoutRef.current)
+            errorTimeoutRef.current = undefined
+        }
+
+        if (error) {
+            // Set a timeout to display the error after 750ms
+            errorTimeoutRef.current = setTimeout(() => {
+                setDisplayError(error)
+            }, 750)
+        } else {
+            // Clear the display error if there's no error
+            setDisplayError(undefined)
+        }
+
+        // Cleanup timeout on unmount
+        return () => {
+            if (errorTimeoutRef.current) {
+                clearTimeout(errorTimeoutRef.current)
+                errorTimeoutRef.current = undefined
+            }
+        }
+    }, [error])
+
+    // If we have a tree (successful render), clear any pending error display
+    useEffect(() => {
+        if (tree && !error) {
+            setDisplayError(undefined)
+            if (errorTimeoutRef.current) {
+                clearTimeout(errorTimeoutRef.current)
+                errorTimeoutRef.current = undefined
+            }
+        }
+    }, [tree, error])
+
+    // Display error if it exists
+    if (displayError) {
+        return (
+            <div className={className}>
+                <div
+                    style={{
+                        color: 'red',
+                        padding: '8px',
+                        border: '1px solid red',
+                        borderRadius: '4px',
+                    }}
+                >
+                    <strong>Error rendering markdown:</strong> {displayError.message}
+                </div>
+            </div>
+        )
+    }
 
     if (!tree) return null
 
