@@ -19,7 +19,15 @@ export default defineProjectWithDefaults(__dirname, {
         sourcemap: false,
         reportCompressedSize: false,
         rollupOptions: {
-            external: ['node:https'],
+            external: [
+                'node:https',
+                // Exclude Node.js-specific langium modules
+                'langium/lib/documentation/jsdoc',
+                'vscode-languageserver-types',
+                // Workaround: langium imports @chevrotain/regexp-to-ast but doesn't declare it as a dependency
+                // This causes PNPM resolution issues in webviews build. Browser-compatible, just externalized.
+                '@chevrotain/regexp-to-ast',
+            ],
             watch: {
                 include: ['**'],
                 exclude: [__dirname + '/../node_modules', __dirname + '/../src'],
